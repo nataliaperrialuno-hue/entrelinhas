@@ -45,8 +45,8 @@
   filter: blur(calc(var(--read-progress, 0) * 3px));
   will-change: opacity, filter;
   transition:
-    opacity 180ms linear,
-    filter 180ms linear;
+    opacity 500ms ease-out,
+    filter 500ms ease-out;
 }
 
 .letter-sheet__signature {

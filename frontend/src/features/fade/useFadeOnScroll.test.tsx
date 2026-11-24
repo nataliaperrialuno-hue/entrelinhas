@@ -103,9 +103,9 @@ function mountDom(paragraphs: string[]): Harness {
     });
   };
 
-  // Scroller de 1000px: linha em y=700 e zona de transição de 150px.
+  // Scroller de 1000px: linha em y=820 e zona de transição de 220px.
   defineRect(scroller, () => 0, 1000);
-  // O segundo bloco começa abaixo da linha (bottom 750 > 700) e não inicia dwell.
+  // O segundo bloco também cruza a linha (bottom 750 < 820) e entra na transição.
   blocks.forEach((block, index) => defineRect(block, () => 400 + index * 250 - scrollTop, 100));
   defineRect(sentinel, () => 400 + paragraphs.length * 250 - scrollTop, 40);
 
@@ -189,7 +189,7 @@ describe('useFadeOnScroll', () => {
     flushFrames();
 
     expect(onProgress).toHaveBeenCalledTimes(1);
-    expect(onProgress).toHaveBeenCalledWith(0.5);
+    expect(onProgress).toHaveBeenCalledWith(29 / 44);
   });
 
   it('não apaga o bloco antes de concluído o dwell após a interação', () => {
@@ -205,7 +205,7 @@ describe('useFadeOnScroll', () => {
     expect(dom.blocks[0].textContent).toBe('primeiro bloco');
 
     act(() => {
-      vi.advanceTimersByTime(399);
+      vi.advanceTimersByTime(999);
     });
     expect(dom.blocks[0].textContent).toBe('primeiro bloco');
 
@@ -271,7 +271,7 @@ describe('useFadeOnScroll', () => {
       vi.advanceTimersByTime(200);
     });
 
-    dom.setScrollTop(-300);
+    dom.setScrollTop(-400);
     act(() => {
       dom.scroller.dispatchEvent(new Event('scroll'));
     });
@@ -291,7 +291,7 @@ describe('useFadeOnScroll', () => {
     act(() => observer().emit(dom.sheet, true));
     flushFrames();
 
-    expect(onProgress).toHaveBeenCalledWith(0.5);
+    expect(onProgress).toHaveBeenCalledWith(29 / 44);
     expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('');
 
     act(() => {
@@ -316,7 +316,7 @@ describe('useFadeOnScroll', () => {
 
     expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('1.000');
     const values = onProgress.mock.calls.map((call) => call[0]);
-    expect(values).toEqual([0.5]);
+    expect(values).toEqual([29 / 44, 1]);
   });
 
   it('conclui uma única vez e apaga todos os blocos ao aceitar a conclusão', () => {
@@ -392,7 +392,7 @@ describe('useFadeOnScroll', () => {
     expect(onProgress.mock.calls[0][0]).toBeGreaterThan(0);
 
     act(() => {
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(6000);
     });
     flushFrames();
 

@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import { blockProgress, clamp, dwellForWords, mergeProgress, shouldComplete } from './readingLine';
 
-const READING_LINE_RATIO = 0.7;
-const FADE_SPAN_RATIO = 0.15;
+const READING_LINE_RATIO = 0.82;
+const FADE_SPAN_RATIO = 0.22;
 const HEARTBEAT_MS = 1500;
 const COMPLETION_DWELL_MS = 1000;
 const BLOCK_SELECTOR = '[data-letter-block]';

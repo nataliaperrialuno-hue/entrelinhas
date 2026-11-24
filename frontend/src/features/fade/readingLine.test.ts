@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { blockProgress, clamp, dwellForWords, mergeProgress, shouldComplete } from './readingLine';
+import {
+  blockProgress,
+  clamp,
+  dwellForWords,
+  MAX_DWELL_MS,
+  mergeProgress,
+  shouldComplete,
+} from './readingLine';
 
 describe('clamp', () => {
   it('limita valores aos limites padrão', () => {
@@ -33,18 +40,20 @@ describe('blockProgress', () => {
 });
 
 describe('dwellForWords', () => {
-  it('aplica o piso de 400 ms e cresce com o número de palavras', () => {
-    expect(dwellForWords(0)).toBe(400);
-    expect(dwellForWords(10)).toBe(400);
-    expect(dwellForWords(11)).toBe(400);
-    expect(dwellForWords(14)).toBe(420);
-    expect(dwellForWords(20)).toBe(600);
-    expect(dwellForWords(100)).toBe(3000);
+  it('aplica o piso de 1000 ms e cresce com o número de palavras', () => {
+    expect(MAX_DWELL_MS).toBe(6000);
+    expect(dwellForWords(0)).toBe(1000);
+    expect(dwellForWords(10)).toBe(1000);
+    expect(dwellForWords(11)).toBe(1000);
+    expect(dwellForWords(14)).toBe(1000);
+    expect(dwellForWords(20)).toBe(1200);
+    expect(dwellForWords(50)).toBe(3000);
   });
 
-  it('limita o dwell a 4 s para que cartas longas possam concluir', () => {
-    expect(dwellForWords(134)).toBe(4000);
-    expect(dwellForWords(4000)).toBe(4000);
+  it('limita o dwell a 6 s para que cartas longas possam concluir', () => {
+    expect(dwellForWords(100)).toBe(6000);
+    expect(dwellForWords(134)).toBe(6000);
+    expect(dwellForWords(4000)).toBe(6000);
   });
 });
 
