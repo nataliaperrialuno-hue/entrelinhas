@@ -112,7 +112,7 @@ Os identificadores de tema seguem `frontend/src/shared/types.ts`: `envelope` (`c
 { "url": "/c/<LINK_TOKEN>" }
 ```
 
-**Falhas:** `400` (dados inválidos, inclusive mensagem acima de 4.000 palavras ou 100.000 caracteres), `413` (corpo maior que 512 kb), `429` (limite de taxa), `500`.
+**Falhas:** `400` (dados inválidos, inclusive mensagem acima de 6.000 palavras ou 100.000 caracteres), `413` (corpo maior que 512 kb), `429` (limite de taxa), `500`.
 
 ```bash
 curl -i -X POST http://localhost:5173/api/letters \

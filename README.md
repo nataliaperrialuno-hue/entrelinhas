@@ -24,7 +24,7 @@ O projeto é um monorepo de estudo e demonstração, organizado para evolução 
 
 ## Rascunhos e contador locais
 
-O botão **Salvar rascunho** guarda título, mensagem, identificação e opções da carta no próprio navegador. O menu superior oferece **Nova carta** (limpa o formulário) e **Rascunhos** (abre o painel com **Carregar** e **Excluir**). Sem rascunhos salvos, o painel mostra `Nenhum rascunho salvo.` e lembra: `Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.`
+O botão **Salvar rascunho** guarda título, mensagem, identificação e opções da carta no próprio navegador. No topo, um botão de três traços (`aria-label="Abrir menu"`) abre um **menu lateral** (drawer) com **Nova carta** (limpa o formulário) e **Rascunhos** (abre o painel com **Carregar** e **Excluir**); o painel fica dentro do drawer. O botão de três traços continua disponível após gerar o link. Sem rascunhos salvos, o painel mostra `Nenhum rascunho salvo.` e lembra: `Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.`
 
 A barra do ShareBox mostra `Você já escreveu N carta(s) neste navegador.`, com pluralização correta. O contador cresce **somente após a criação da carta com sucesso**; uma tentativa inválida não incrementa.
 

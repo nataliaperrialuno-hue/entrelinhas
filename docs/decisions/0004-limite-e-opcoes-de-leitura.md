@@ -15,7 +15,9 @@ O apagamento progressivo é a assinatura do produto, mas nem toda carta deve des
 2. **Apagamento visual opcional; descarte obrigatório.** `fadeEnabled` (padrão `true`) controla apenas o efeito visual. Com `true`, nenhuma palavra some antes de uma interação do leitor (scroll, roda, toque ou tecla de navegação); com `false`, o texto permanece visível durante toda a leitura e é removido quando ela conclui. Em ambos os casos, o servidor descarta o plaintext e os assets ao concluir ou ao vencer qualquer prazo.
 3. **Inatividade por `last_seen_at`.** `IDLE_TIMEOUT_SECONDS=600` define `idleDeadlineAt = last_seen_at + 600 s`. `/heartbeat` renova somente esse prazo. É uma fronteira independente da janela de carência `SESSION_GRACE_MINUTES=10` do ADR 0002, que continua valendo para retomada de sessão interrompida.
 4. **Assets no SQLite.** Uploads binários vão para `POST /api/assets` (`x-asset-kind: photo|seal`) e são gravados como BLOB em `letter_assets` (migração 002). O `uploadToken` é descartável e só vincula o arquivo em `POST /api/letters`. `GET /api/assets/:id` exige o cookie da sessão. A remoção de fotos/selo acontece na **mesma transação** que apaga o texto.
-5. **Limites explícitos.** No máximo 3 fotos de até 2 MiB, selo PNG/WebP de até 16 KiB, e carta de até 4.000 palavras / 100.000 caracteres. MIME, *magic bytes* e dimensões são validados no servidor; o cliente valida apenas como UX.
+5. **Limites explícitos.** No máximo 3 fotos de até 2 MiB, selo PNG/WebP de até 16 KiB, e carta de até 6.000 palavras / 100.000 caracteres. MIME, *magic bytes* e dimensões são validados no servidor; o cliente valida apenas como UX.
+
+**Nota de atualização (2026-11-24):** o limite de palavras passou de 4.000 para 6.000; o teto de 100.000 caracteres e o limite de 512 kb do corpo seguem inalterados. O item 5 registra o valor vigente.
 
 ## Consequências
 

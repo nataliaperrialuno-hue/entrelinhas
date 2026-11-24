@@ -66,7 +66,7 @@ Rascunhos e contador de cartas escritas são estado **do navegador**, não do se
 
 ## Formatação e limites
 
-A mensagem é validada no backend com limite de **4.000 palavras** e teto de segurança de **100.000 caracteres**. O texto rico é armazenado como texto puro com marcadores internos; um parser com whitelist converte apenas os marcadores reconhecidos em elementos React:
+A mensagem é validada no backend com limite de **6.000 palavras** e teto de segurança de **100.000 caracteres**. O texto rico é armazenado como texto puro com marcadores internos; um parser com whitelist converte apenas os marcadores reconhecidos em elementos React:
 
 - `**negrito**` — negrito;
 - `*itálico*` — itálico;
