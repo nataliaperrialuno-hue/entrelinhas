@@ -13,7 +13,8 @@ export function createApp({ db, config }: { db: Db; config: AppConfig }): Expres
 
   app.use(securityHeaders);
   app.use(noStoreForReading);
-  app.use(express.json({ limit: '32kb' }));
+  // Texto de até 100k caracteres mais marcadores precisa caber no corpo.
+  app.use(express.json({ limit: '512kb' }));
   app.use(sessionCookieMiddleware(config));
 
   app.get('/api/health', (_req, res) => {
