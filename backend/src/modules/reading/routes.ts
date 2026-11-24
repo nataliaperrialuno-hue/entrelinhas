@@ -4,11 +4,12 @@ import type { Db } from '../../db/client';
 import { HttpError } from '../../middleware/error';
 import { createRateLimiter } from '../../middleware/security';
 import { readerToken, setReaderCookie } from '../../middleware/session';
-import { progressSchema } from '../letters/validation';
+import { emptyBodySchema, progressSchema } from '../letters/validation';
 import {
   claimReading,
   completeReading,
   getReadingState,
+  heartbeat,
   openReading,
   updateProgress,
 } from './service';
@@ -51,6 +52,10 @@ export function readingRouter({ db, config }: { db: Db; config: AppConfig }): Ro
   });
 
   router.post('/api/read/:sessionId/open', createRateLimiter(config), (req, res) => {
+    if (!emptyBodySchema.safeParse(req.body ?? {}).success) {
+      throw new HttpError(400, 'Dados inválidos.');
+    }
+
     res.json(
       openReading(db, config, requiredParam(req.params.sessionId), readerToken(req)),
     );
@@ -73,7 +78,21 @@ export function readingRouter({ db, config }: { db: Db; config: AppConfig }): Ro
     );
   });
 
+  router.post('/api/read/:sessionId/heartbeat', (req, res) => {
+    if (!emptyBodySchema.safeParse(req.body ?? {}).success) {
+      throw new HttpError(400, 'Dados inválidos.');
+    }
+
+    res.json(
+      heartbeat(db, config, requiredParam(req.params.sessionId), readerToken(req)),
+    );
+  });
+
   router.post('/api/read/:sessionId/complete', createRateLimiter(config), (req, res) => {
+    if (!emptyBodySchema.safeParse(req.body ?? {}).success) {
+      throw new HttpError(400, 'Dados inválidos.');
+    }
+
     res.json(
       completeReading(db, config, requiredParam(req.params.sessionId), readerToken(req)),
     );

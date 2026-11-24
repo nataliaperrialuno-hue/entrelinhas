@@ -3,6 +3,8 @@ import type { AppConfig } from '../../config';
 import { immediate, type Db } from '../../db/client';
 import { HttpError, unavailableError } from '../../middleware/error';
 import { generateToken, hashToken, tokensEqual } from '../../utils/tokens';
+import { ORPHAN_ASSET_TTL_MS } from '../assets/service';
+import { deleteOrphanAssets } from '../assets/repository';
 import {
   claimLetter,
   completeLetter,
@@ -11,6 +13,7 @@ import {
   findLetterById,
   findLetterByTokenHash,
   markLetterReading,
+  purgeLetterContent,
   type LetterRow,
 } from '../letters/repository';
 import {
@@ -18,18 +21,19 @@ import {
   canOpen,
   clampProgress,
   decideClaim,
-  isLetterTerminal,
   isSessionActive,
   nextEpoch,
   type SessionSnapshot,
   type SessionState,
 } from '../letters/state';
 import { themeSchema, type ThemeSelection } from '../letters/validation';
+import { enforceReadingDeadline, readingDeadlines } from './deadlines';
 import {
   advanceProgress,
   completeSession,
   expireSessions,
   findSessionById,
+  findSessionByTokenHash,
   insertSession,
   invalidateSession,
   openSession,
@@ -43,6 +47,17 @@ const SECOND_MS = 1_000;
 export interface ReadingState {
   state: SessionState;
   progress: number;
+  readDeadlineAt: number;
+  idleDeadlineAt: number;
+  fadeEnabled: boolean;
+  sealAssetId: string | null;
+}
+
+export interface HeartbeatResult {
+  state: SessionState;
+  progress: number;
+  readDeadlineAt: number;
+  idleDeadlineAt: number;
 }
 
 export interface LetterView {
@@ -53,6 +68,10 @@ export interface LetterView {
   recipientName: string | null;
   signature: string | null;
   theme: ThemeSelection;
+  fadeEnabled: boolean;
+  readDeadlineAt: number;
+  idleDeadlineAt: number;
+  sealAssetId: string | null;
 }
 
 export interface ClaimResult {
@@ -65,6 +84,7 @@ export interface ClaimResult {
 export interface ExpirationResult {
   lettersExpired: number;
   sessionsExpired: number;
+  assetsDeleted: number;
 }
 
 function requireSession(
@@ -98,11 +118,17 @@ function snapshot(session: SessionRow | undefined): SessionSnapshot | null {
   return { state: session.state, graceUntil: session.grace_until };
 }
 
-function toLetterView(row: LetterRow): LetterView {
+function parseTheme(row: LetterRow): ThemeSelection {
   const parsed = themeSchema.safeParse(JSON.parse(row.theme_json) as unknown);
   if (!parsed.success) {
     throw new HttpError(500, 'Erro interno');
   }
+
+  return parsed.data;
+}
+
+function toLetterView(row: LetterRow, session: SessionRow, config: AppConfig): LetterView {
+  const deadlines = readingDeadlines(session, row, config);
 
   return {
     id: row.id,
@@ -111,13 +137,36 @@ function toLetterView(row: LetterRow): LetterView {
     senderName: row.sender_anonymous === 1 ? null : row.sender_name,
     recipientName: row.recipient_name,
     signature: row.signature,
-    theme: parsed.data,
+    theme: parseTheme(row),
+    fadeEnabled: row.fade_enabled !== 0,
+    readDeadlineAt: deadlines.readDeadlineAt,
+    idleDeadlineAt: deadlines.idleDeadlineAt,
+    sealAssetId: row.seal_asset_id,
+  };
+}
+
+function toReadingState(
+  session: SessionRow,
+  letter: LetterRow,
+  config: AppConfig,
+  state: SessionState = session.state,
+): ReadingState {
+  const deadlines = readingDeadlines(session, letter, config);
+
+  return {
+    state,
+    progress: session.last_progress,
+    readDeadlineAt: deadlines.readDeadlineAt,
+    idleDeadlineAt: deadlines.idleDeadlineAt,
+    fadeEnabled: letter.fade_enabled !== 0,
+    sealAssetId: letter.seal_asset_id,
   };
 }
 
 /**
  * Consome o link de leitura. Toda a decisão e todas as mutações acontecem
- * dentro de uma única transação BEGIN IMMEDIATE.
+ * dentro de uma única transação BEGIN IMMEDIATE. `null` significa indisponível:
+ * o erro HTTP é lançado fora da transação para não desfazer a limpeza.
  */
 export function claimReading(
   db: Db,
@@ -128,10 +177,10 @@ export function claimReading(
 ): ClaimResult {
   const linkHash = hashToken(linkToken, config.tokenHmacSecret);
 
-  return immediate(db, () => {
+  const result = immediate<ClaimResult | null>(db, () => {
     const letter = findLetterByTokenHash(db, linkHash);
     if (letter === undefined) {
-      throw unavailableError();
+      return null;
     }
 
     const current =
@@ -140,15 +189,43 @@ export function claimReading(
         : findSessionById(db, letter.current_session_id);
 
     // Portador do cookie válido retoma a mesma sessão, sem emitir novo cookie.
-    if (cookieToken !== null && current !== undefined && isSessionActive(current.state)) {
-      const presentedHash = hashToken(cookieToken, config.tokenHmacSecret);
-      if (tokensEqual(presentedHash, current.token_hash)) {
-        return {
-          sessionId: current.id,
-          location: `/leitura/${current.id}`,
-          readerToken: null,
-        };
+    // Um cookie inválido/antigo NUNCA autoriza retomar a sessão atual.
+    if (cookieToken !== null) {
+      const cookieHash = hashToken(cookieToken, config.tokenHmacSecret);
+      const cookieSession = findSessionByTokenHash(db, cookieHash);
+
+      if (
+        cookieSession === undefined ||
+        cookieSession.letter_id !== letter.id ||
+        !isSessionActive(cookieSession.state) ||
+        (current !== undefined && current.id !== cookieSession.id) ||
+        (current === undefined && letter.current_session_id !== cookieSession.id)
+      ) {
+        return null;
       }
+
+      if (enforceReadingDeadline(db, cookieSession, letter, config, now)) {
+        return null;
+      }
+
+      return {
+        sessionId: cookieSession.id,
+        location: `/leitura/${cookieSession.id}`,
+        readerToken: null,
+      };
+    }
+
+    if (
+      current !== undefined &&
+      isSessionActive(current.state) &&
+      enforceReadingDeadline(db, current, letter, config, now)
+    ) {
+      return null;
+    }
+
+    if (current === undefined && now >= letter.expires_at) {
+      purgeLetterContent(db, letter.id);
+      return null;
     }
 
     const decision = decideClaim(
@@ -161,7 +238,7 @@ export function claimReading(
       const sessionId = randomUUID();
       if (!claimLetter(db, { letterId: letter.id, sessionId, now })) {
         // Outra requisição ganhou a corrida; nenhuma sessão é criada aqui.
-        throw unavailableError();
+        return null;
       }
 
       const readerToken = generateToken();
@@ -184,7 +261,7 @@ export function claimReading(
 
     if (decision === 'resume') {
       if (current === undefined) {
-        throw unavailableError();
+        return null;
       }
 
       invalidateSession(db, current.id);
@@ -214,19 +291,37 @@ export function claimReading(
       };
     }
 
-    throw unavailableError();
+    return null;
   });
+
+  if (result === null) {
+    throw unavailableError();
+  }
+
+  return result;
 }
 
-/** Nunca devolve conteúdo da carta: apenas estado e progresso. */
+/** Nunca devolve conteúdo da carta: apenas estado, prazos e progresso. */
 export function getReadingState(
   db: Db,
   config: AppConfig,
   sessionId: string,
   cookieToken: string | null,
+  now: number = Date.now(),
 ): ReadingState {
-  const session = requireSession(db, config, sessionId, cookieToken);
-  return { state: session.state, progress: session.last_progress };
+  return immediate(db, () => {
+    const session = requireSession(db, config, sessionId, cookieToken);
+    const letter = findLetterById(db, session.letter_id);
+    if (letter === undefined) {
+      throw unavailableError();
+    }
+
+    if (enforceReadingDeadline(db, session, letter, config, now)) {
+      return toReadingState(session, letter, config, 'expired');
+    }
+
+    return toReadingState(session, letter, config);
+  });
 }
 
 /** Único endpoint autorizado a entregar o conteúdo da carta. */
@@ -237,29 +332,46 @@ export function openReading(
   cookieToken: string | null,
   now: number = Date.now(),
 ): LetterView {
-  return immediate(db, () => {
+  const result = immediate<LetterView | null>(db, () => {
     const session = requireSession(db, config, sessionId, cookieToken);
-
-    if (!canOpen(session.state)) {
-      throw unavailableError();
+    const letter = findLetterById(db, session.letter_id);
+    if (letter === undefined) {
+      return null;
     }
+
+    if (enforceReadingDeadline(db, session, letter, config, now)) {
+      return null;
+    }
+    if (!canOpen(session.state)) {
+      return null;
+    }
+
+    // Valida o tema antes de qualquer mutação, para não confirmar abertura com erro.
+    parseTheme(letter);
 
     if (session.state === 'opening' && !openSession(db, sessionId, now)) {
       const fresh = findSessionById(db, sessionId);
       if (fresh === undefined || fresh.state !== 'reading') {
-        throw unavailableError();
+        return null;
       }
     }
 
     markLetterReading(db, session.letter_id, sessionId);
 
-    const letter = findLetterById(db, session.letter_id);
-    if (letter === undefined || isLetterTerminal(letter.state)) {
-      throw unavailableError();
+    const freshLetter = findLetterById(db, session.letter_id);
+    const freshSession = findSessionById(db, sessionId);
+    if (freshLetter === undefined || freshSession === undefined) {
+      return null;
     }
 
-    return toLetterView(letter);
+    return toLetterView(freshLetter, freshSession, config);
   });
+
+  if (result === null) {
+    throw unavailableError();
+  }
+
+  return result;
 }
 
 export function updateProgress(
@@ -270,9 +382,16 @@ export function updateProgress(
   progress: number,
   now: number = Date.now(),
 ): { progress: number } {
-  return immediate(db, () => {
+  const result = immediate<{ progress: number } | null>(db, () => {
     const session = requireSession(db, config, sessionId, cookieToken);
+    const letter = findLetterById(db, session.letter_id);
+    if (letter === undefined) {
+      return null;
+    }
 
+    if (enforceReadingDeadline(db, session, letter, config, now)) {
+      return null;
+    }
     if (!canOpen(session.state)) {
       return { progress: session.last_progress };
     }
@@ -286,6 +405,55 @@ export function updateProgress(
     const fresh = findSessionById(db, sessionId);
     return { progress: fresh?.last_progress ?? next };
   });
+
+  if (result === null) {
+    throw unavailableError();
+  }
+
+  return result;
+}
+
+export function heartbeat(
+  db: Db,
+  config: AppConfig,
+  sessionId: string,
+  cookieToken: string | null,
+  now: number = Date.now(),
+): HeartbeatResult {
+  const result = immediate<HeartbeatResult | null>(db, () => {
+    const session = requireSession(db, config, sessionId, cookieToken);
+    const letter = findLetterById(db, session.letter_id);
+    if (letter === undefined) {
+      return null;
+    }
+
+    if (enforceReadingDeadline(db, session, letter, config, now)) {
+      return null;
+    }
+    if (!isSessionActive(session.state)) {
+      return null;
+    }
+
+    refreshHeartbeat(db, sessionId, now);
+    const fresh = findSessionById(db, sessionId);
+    if (fresh === undefined) {
+      return null;
+    }
+
+    const deadlines = readingDeadlines(fresh, letter, config);
+    return {
+      state: fresh.state,
+      progress: fresh.last_progress,
+      readDeadlineAt: deadlines.readDeadlineAt,
+      idleDeadlineAt: deadlines.idleDeadlineAt,
+    };
+  });
+
+  if (result === null) {
+    throw unavailableError();
+  }
+
+  return result;
 }
 
 export function completeReading(
@@ -295,15 +463,21 @@ export function completeReading(
   cookieToken: string | null,
   now: number = Date.now(),
 ): { state: 'completed' } {
-  return immediate(db, () => {
+  const result = immediate<{ state: 'completed' } | null>(db, () => {
     const session = requireSession(db, config, sessionId, cookieToken);
+    const letter = findLetterById(db, session.letter_id);
+    if (letter === undefined) {
+      return null;
+    }
 
+    if (enforceReadingDeadline(db, session, letter, config, now)) {
+      return null;
+    }
     if (session.state === 'completed') {
       return { state: 'completed' };
     }
-
     if (!canComplete(session.state)) {
-      throw unavailableError();
+      return null;
     }
 
     if (completeSession(db, sessionId, now)) {
@@ -312,6 +486,12 @@ export function completeReading(
 
     return { state: 'completed' };
   });
+
+  if (result === null) {
+    throw unavailableError();
+  }
+
+  return result;
 }
 
 /** Job de limpeza: nunca sobrescreve cartas já concluídas. */
@@ -321,11 +501,12 @@ export function expireStale(
   now: number = Date.now(),
 ): ExpirationResult {
   return immediate(db, () => {
-    const staleBefore = now - config.heartbeatTtlSeconds * SECOND_MS;
-    const sessionsExpired = expireSessions(db, now, staleBefore);
+    const idleBefore = now - config.idleTimeoutSeconds * SECOND_MS;
+    const sessionsExpired = expireSessions(db, idleBefore);
     const lettersExpired =
-      expireUnopenedLetters(db, now) + expireStaleReadingLetters(db, now);
+      expireUnopenedLetters(db, now) + expireStaleReadingLetters(db);
+    const assetsDeleted = deleteOrphanAssets(db, now - ORPHAN_ASSET_TTL_MS);
 
-    return { lettersExpired, sessionsExpired };
+    return { lettersExpired, sessionsExpired, assetsDeleted };
   });
 }

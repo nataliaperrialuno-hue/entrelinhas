@@ -61,6 +61,23 @@ export function findSessionById(db: Db, id: string): SessionRow | undefined {
   return one<SessionRow>(db, `SELECT ${SESSION_COLUMNS} FROM sessions WHERE id = ?`, id);
 }
 
+export function findSessionByTokenHash(db: Db, tokenHash: string): SessionRow | undefined {
+  return one<SessionRow>(
+    db,
+    `SELECT ${SESSION_COLUMNS} FROM sessions WHERE token_hash = ?`,
+    tokenHash,
+  );
+}
+
+export function expireSessionById(db: Db, id: string): number {
+  return changes(
+    db,
+    `UPDATE sessions SET state = 'expired'
+      WHERE id = ? AND state IN ('opening', 'reading')`,
+    id,
+  );
+}
+
 export function invalidateSession(db: Db, id: string): void {
   changes(db, `UPDATE sessions SET state = 'invalidated' WHERE id = ?`, id);
 }
@@ -115,15 +132,14 @@ export function refreshHeartbeat(db: Db, id: string, now: number): void {
   );
 }
 
-export function expireSessions(db: Db, now: number, staleBefore: number): number {
+/** Expiração por inatividade: 10 minutos desde `last_seen_at`, sem grace_until. */
+export function expireSessions(db: Db, staleBefore: number): number {
   return changes(
     db,
     `UPDATE sessions
         SET state = 'expired'
       WHERE state IN ('opening', 'reading')
-        AND last_seen_at < ?
-        AND grace_until < ?`,
+        AND last_seen_at < ?`,
     staleBefore,
-    now,
   );
 }

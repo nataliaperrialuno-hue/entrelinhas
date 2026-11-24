@@ -23,7 +23,11 @@ export const securityHeaders = helmet({
 });
 
 export function noStoreForReading(req: Request, res: Response, next: NextFunction): void {
-  if (req.path.startsWith('/api/read/') || req.path.startsWith('/leitura/')) {
+  if (
+    req.path.startsWith('/api/read/') ||
+    req.path.startsWith('/api/assets/') ||
+    req.path.startsWith('/leitura/')
+  ) {
     res.setHeader('Cache-Control', 'no-store, private');
   }
 

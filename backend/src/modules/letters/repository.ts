@@ -12,6 +12,9 @@ export interface LetterRow {
   signature: string | null;
   sender_anonymous: number;
   theme_json: string;
+  fade_enabled: number;
+  read_time_limit_seconds: number | null;
+  seal_asset_id: string | null;
   state: LetterState;
   created_at: number;
   expires_at: number;
@@ -24,6 +27,8 @@ export interface NewLetter {
   id: string;
   tokenHash: string;
   draft: LetterDraft;
+  readTimeLimitSeconds: number;
+  sealAssetId: string | null;
   createdAt: number;
   expiresAt: number;
 }
@@ -40,16 +45,18 @@ function changes(db: Db, sql: string, ...params: SqlValue[]): number {
 
 const LETTER_COLUMNS = `
   id, token_hash, title, message, sender_name, recipient_name, signature,
-  sender_anonymous, theme_json, state, created_at, expires_at, opened_at,
-  completed_at, current_session_id
+  sender_anonymous, theme_json, fade_enabled, read_time_limit_seconds,
+  seal_asset_id, state, created_at, expires_at, opened_at, completed_at,
+  current_session_id
 `;
 
 export function insertLetter(db: Db, input: NewLetter): void {
   db.prepare(`
     INSERT INTO letters (
       id, token_hash, title, message, sender_name, recipient_name,
-      signature, sender_anonymous, theme_json, state, created_at, expires_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unopened', ?, ?)
+      signature, sender_anonymous, theme_json, fade_enabled,
+      read_time_limit_seconds, seal_asset_id, state, created_at, expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unopened', ?, ?)
   `).run(
     input.id,
     input.tokenHash,
@@ -60,6 +67,9 @@ export function insertLetter(db: Db, input: NewLetter): void {
     input.draft.signature,
     input.draft.senderAnonymous ? 1 : 0,
     JSON.stringify(input.draft.theme),
+    input.draft.fadeEnabled === false ? 0 : 1,
+    input.readTimeLimitSeconds,
+    input.sealAssetId,
     input.createdAt,
     input.expiresAt,
   );
@@ -105,12 +115,41 @@ export function markLetterReading(db: Db, letterId: string, sessionId: string): 
   );
 }
 
-/** Conclui a carta e apaga o plaintext em uma única instrução atômica. */
+export function deleteAssetsForLetter(db: Db, letterId: string): number {
+  return changes(db, 'DELETE FROM letter_assets WHERE letter_id = ?', letterId);
+}
+
+/** Apaga texto e assets de uma carta expirada sem tocar em cartas concluídas. */
+export function purgeLetterContent(db: Db, letterId: string): void {
+  changes(
+    db,
+    `UPDATE letters
+        SET state = 'expired',
+            title = '',
+            message = '',
+            signature = NULL,
+            sender_name = NULL,
+            recipient_name = NULL
+      WHERE id = ? AND state <> 'completed'`,
+    letterId,
+  );
+  deleteAssetsForLetter(db, letterId);
+}
+
+export function deleteAssetsForExpiredLetters(db: Db): number {
+  return changes(
+    db,
+    `DELETE FROM letter_assets
+      WHERE letter_id IN (SELECT id FROM letters WHERE state = 'expired')`,
+  );
+}
+
+/** Conclui a carta e apaga o plaintext e os assets na mesma transação. */
 export function completeLetter(
   db: Db,
   params: { letterId: string; sessionId: string; now: number },
 ): boolean {
-  return changes(
+  const completed = changes(
     db,
     `UPDATE letters
         SET state = 'completed',
@@ -127,10 +166,16 @@ export function completeLetter(
     params.letterId,
     params.sessionId,
   ) === 1;
+
+  if (completed) {
+    deleteAssetsForLetter(db, params.letterId);
+  }
+
+  return completed;
 }
 
 export function expireUnopenedLetters(db: Db, now: number): number {
-  return changes(
+  const expired = changes(
     db,
     `UPDATE letters
         SET state = 'expired',
@@ -142,11 +187,17 @@ export function expireUnopenedLetters(db: Db, now: number): number {
       WHERE state = 'unopened' AND expires_at <= ?`,
     now,
   );
+
+  if (expired > 0) {
+    deleteAssetsForExpiredLetters(db);
+  }
+
+  return expired;
 }
 
 /** Cartas órfãs cuja sessão atual expirou e que não têm sessão ativa. */
-export function expireStaleReadingLetters(db: Db, now: number): number {
-  return changes(
+export function expireStaleReadingLetters(db: Db): number {
+  const expired = changes(
     db,
     `UPDATE letters
         SET state = 'expired',
@@ -166,8 +217,12 @@ export function expireStaleReadingLetters(db: Db, now: number): number {
           SELECT 1 FROM sessions s
            WHERE s.letter_id = letters.id
              AND s.state IN ('opening', 'reading')
-             AND s.grace_until >= ?
         )`,
-    now,
   );
+
+  if (expired > 0) {
+    deleteAssetsForExpiredLetters(db);
+  }
+
+  return expired;
 }
