@@ -11,10 +11,13 @@ O projeto é um monorepo de estudo e demonstração, organizado para evolução 
 ## Funcionalidades principais
 
 - **Criação de cartas:** remetente (com opção de anonimato), destinatário, título, mensagem e assinatura.
-- **Personalização:** combinação livre de envelope, selo, paleta de cores, tipografia e textura do papel.
+- **Personalização:** combinação livre de envelope, selo, paleta de cores, tipografia e textura do papel — inclui **selo em branco**, desenhado em canvas com pincel, cores e borracha.
+- **Fotos:** até 3 imagens (2 MiB cada) enviadas pelo seletor de arquivo ou por arrastar e soltar; aparecem no meio do texto da prévia e da carta.
+- **Opções de leitura no painel:** escolha se as palavras somem gradualmente (`fadeEnabled`) e o prazo da carta (`readTimeLimitSeconds`, 60 s a 60 min).
 - **Prévia em tempo real:** a carta é mostrada como será lida, antes de gerar o link.
 - **Leitura em etapas:** um link de uso único abre a sessão e libera o conteúdo somente após a confirmação no selo.
-- **Apagamento progressivo:** os blocos perdem nitidez e opacidade à medida que a leitura avança.
+- **Apagamento progressivo:** com `fadeEnabled=true`, os blocos perdem nitidez e opacidade à medida que a leitura avança — e só começam a sumir após o leitor interagir (scroll, toque ou tecla). Com `fadeEnabled=false`, o texto permanece visível até a conclusão; o descarte no servidor acontece nos dois modos.
+- **Prazo e inatividade:** o prazo absoluto é contado a partir da criação da sessão; 10 minutos sem atividade também encerram a leitura e apagam texto e fotos. Ao final, a tela oferece o link **Home — escrever outra carta**.
 - **Encerramento automático:** ao fim do conteúdo, a leitura é concluída sem ação extra e o texto em claro é descartado.
 - **Sessões protegidas:** tokens assinados com HMAC, heartbeat, janela de carência e invalidamento da sessão anterior.
 - **Acessibilidade:** suporte a `prefers-reduced-motion`, foco visível e contraste cuidadoso nas paletas.
@@ -51,13 +54,14 @@ flowchart TD
     D --> E{"Link já utilizado?"}
     E -->|"Sim"| F["409 Conflict ou 410 Gone"]
     E -->|"Não"| G["302 para /leitura/sessionId + cookie de sessão"]
-    G --> H["GET /api/read/sessionId/state"]
+    G --> H["GET /api/read/sessionId/state + prazos"]
     H --> I["POST /open revela a carta"]
-    I --> J["POST /progress a cada avanço"]
-    J --> K{"Fim do conteúdo?"}
+    I --> J["POST /progress a cada avanço + /heartbeat"]
+    J --> K{"Fim do conteúdo ou prazo?"}
     K -->|"Não"| J
     K -->|"Sim"| L["POST /complete com Idempotency-Key"]
-    L --> M["state = completed e plaintext apagado"]
+    L --> M["plaintext e assets apagados na mesma transação"]
+    M --> N["Home — escrever outra carta"]
 ```
 
 Detalhes em [`docs/architecture.md`](docs/architecture.md) e [`docs/data-model.md`](docs/data-model.md).
@@ -79,22 +83,23 @@ entrelinhas/
 │       ├── db/
 │       │   ├── client.ts           # conexão, migrações e transações
 │       │   └── migrations/
-│       │       └── 001_init.sql    # esquema de cartas e sessões
-│       └── modules/                # regras e rotas de letters/reading (em implementação)
+│       │       ├── 001_init.sql    # esquema de cartas e sessões
+│       │       └── 002_reading_options.sql # opções de leitura e letter_assets
+│       └── modules/                # regras e rotas de letters/reading/assets
 ├── docs/
 │   ├── architecture.md
 │   ├── api.md
 │   ├── data-model.md
 │   ├── threat-model.md
-│   └── decisions/                  # ADRs 0001 a 0003
+│   └── decisions/                  # ADRs 0001 a 0004
 ├── frontend/
 │   ├── index.html
 │   └── src/
 │       ├── App.tsx                 # roteamento por pathname
 │       ├── main.tsx                # mount React
 │       ├── features/
-│       │   ├── creation/           # formulário e prévia (em implementação)
-│       │   └── reading/            # experiência de leitura única (em implementação)
+│       │   ├── creation/           # formulário, opções de leitura, selo canvas, fotos e prévia
+│       │   └── reading/            # experiência de leitura única e tela final
 │       ├── lib/api.ts              # cliente HTTP tipado
 │       ├── shared/                 # tipos, temas e componente de carta
 │       ├── styles/                 # tokens, reset e estilos da carta
@@ -170,6 +175,8 @@ O deploy de produção usa Docker Compose: o Caddy termina o TLS na borda e o ba
 | `LETTER_TTL_DAYS` | `30` | Dias até o expiramento de uma carta não lida. |
 | `SESSION_GRACE_MINUTES` | `10` | Minutos de tolerância para retomada única de uma sessão interrompida. |
 | `HEARTBEAT_TTL_SECONDS` | `120` | Segundos de validade do heartbeat da sessão de leitura. |
+| `IDLE_TIMEOUT_SECONDS` | `600` | Segundos sem atividade (`last_seen_at`) até apagar texto e assets. |
+| `DEFAULT_READ_TIME_LIMIT_SECONDS` | `600` | Prazo absoluto padrão por carta; cada carta pode escolher de 60 a 3600 s. |
 | `RATE_LIMIT_MAX` | `30` | Máximo de requisições por janela de limitação de taxa. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Duração da janela de limitação de taxa, em milissegundos. |
 | `PUBLIC_APP_URL` | `http://localhost:5173` | URL pública usada na montagem dos links de leitura. |
@@ -180,19 +187,21 @@ O deploy de produção usa Docker Compose: o Caddy termina o TLS na borda e o ba
 - **HMAC-SHA256:** apenas o hash assinado do token é persistido; o token cru não é armazenado nem registrado em log (use o identificador da carta/sessão para rastrear).
 - **Cookie `HttpOnly`:** o estado da sessão é transportado em cookie com `SameSite` restritivo e `Secure` em produção; o JavaScript da página não lê esse cookie diretamente.
 - **Uso único e invalidamento:** a segunda abertura do link recebe `409`/`410`; iniciar uma nova sessão invalida a anterior por `epoch`.
-- **Apagamento ao concluir:** com a leitura concluída, o texto em claro é descartado do registro; metadados mínimos permanecem para controle de validade.
+- **Apagamento ao concluir ou expirar:** na mesma transação, o texto em claro é descartado e fotos/selo são removidos da tabela `letter_assets`; metadados mínimos permanecem para controle de validade.
+- **Assets com autorização separada:** o token de upload só vincula o arquivo à carta; `GET /api/assets/:id` exige o cookie da sessão. MIME, *magic bytes*, dimensões e tamanho são validados no servidor (3 fotos de até 2 MiB; selo PNG/WebP de até 16 KiB).
 - **Dados mínimos:** não há cadastro de usuários nem perfil; a carta guarda apenas o que foi escrito e o necessário ao controle de sessão.
-- **Cabeçalhos e limites:** Helmet, corpo JSON limitado a 32 kb e limitação de taxa nas rotas sensíveis.
+- **Cabeçalhos e limites:** Helmet, corpo JSON limitado a 512 kb, uploads binários separados e limitação de taxa nas rotas sensíveis.
 
 Ameaças e mitigação detalhadas em [`docs/threat-model.md`](docs/threat-model.md).
 
 ## Limitações técnicas
 
 - **Não há bloqueio de screenshot, gravação de tela ou DevTools.** Fotografias, capturas do sistema operacional e ferramentas de desenvolvedor não podem ser impedidas pela aplicação web. O apagamento progressivo é uma experiência visual, não uma garantia criptográfica.
-- **Scroll é um proxy de leitura:** o progresso inferido da rolagem não prova que o texto foi lido. Não compartilhe links de cartas sensíveis.
+- **Scroll é um proxy de leitura:** o progresso inferido da rolagem não prova que o texto foi lido. Com `fadeEnabled=false`, as palavras permanecem visíveis até a conclusão por escolha de quem enviou. Não compartilhe links de cartas sensíveis.
+- **Dimensões sem reencode:** imagens são validadas por MIME, *magic bytes*, tamanho e dimensões, mas não são recodificadas; permanece uma superfície residual para arquivos polimórficos.
 - **bfcache:** estados retornados do cache de histórico são mitigados por revalidação da sessão; ainda assim, a disponibilidade depende do navegador.
 - **SQLite tem um escritor:** o SQLite local é mono-processo; escalar horizontalmente exigirá outro armazenamento ou replicação explícita.
-- **CSP não substitui HTTPS/HSTS:** a Content Security Policy já está ativa no Helmet (`backend/src/middleware/security.ts`), com diretivas restritas a `'self'` (sem `unsafe-eval`; `'unsafe-inline'` apenas em estilos e `data:` apenas em imagens), mas é defesa em profundidade; a confidencialidade em trânsito depende de TLS/HSTS na borda.
+- **CSP não substitui HTTPS/HSTS:** a Content Security Policy já está ativa no Helmet (`backend/src/middleware/security.ts`), com diretivas restritas a `'self'` (sem `unsafe-eval`; `'unsafe-inline'` apenas em estilos e `data:` em `img-src` para prévia/selo). O `data:` amplia a superfície de imagens em relação a uma CSP estritamente `'self'`; a confidencialidade em trânsito depende de TLS/HSTS na borda.
 - **Playwright exige navegadores instalados** para os testes end-to-end.
 
 ## Roadmap

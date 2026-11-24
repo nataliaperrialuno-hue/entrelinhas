@@ -1,6 +1,6 @@
 # Modelo de dados
 
-O esquema inicial está em `backend/src/db/migrations/001_init.sql` e usa duas tabelas: `letters` (a carta) e `sessions` (cada abertura da leitura). Instantes são armazenados como `INTEGER` pela camada de domínio; não é necessário assumir a unidade para entender as transições.
+O esquema inicial está em `backend/src/db/migrations/001_init.sql` (`letters` e `sessions`). A migração `backend/src/db/migrations/002_reading_options.sql` acrescenta as opções de leitura e a tabela `letter_assets`. O runner aplica as migrações em ordem e registra o resultado em `PRAGMA user_version`: **banco na versão 2** após a migração 002 (a versão 1 corresponde somente ao esquema inicial). Instantes são armazenados como `INTEGER` em milissegundos (epoch) pela camada de domínio.
 
 ## Tabela `letters`
 
@@ -13,7 +13,10 @@ O esquema inicial está em `backend/src/db/migrations/001_init.sql` e usa duas t
 | `sender_name` | `TEXT` | anulável | Nome do remetente; `NULL` quando anônimo. |
 | `recipient_name` | `TEXT` | anulável | Nome do destinatário. |
 | `signature` | `TEXT` | anulável | Assinatura opcional. |
-| `theme_json` | `TEXT` | `NOT NULL` | Seleção de tema serializada (envelope, selo, paleta, tipografia, papel e `inkColor` opcional no formato `#RRGGBB`; cartas antigas não possuem esse campo). |
+| `theme_json` | `TEXT` | `NOT NULL` | Seleção de tema serializada (envelope, selo, paleta, tipografia, papel e `inkColor` opcional no formato `#RRGGBB`; cartas antigas não possuem esse campo). `seal` pode ser `custom`. |
+| `fade_enabled` | `INTEGER` | `NOT NULL DEFAULT 1` | Apagamento visual progressivo da carta (`1` = ligado, padrão retrocompatível; `0` = texto visível até a conclusão). |
+| `read_time_limit_seconds` | `INTEGER` | anulável (padrão efetivo `600`) | Prazo absoluto por carta, de `60` a `3600` segundos. `NULL` em cartas criadas antes da migração 002. |
+| `seal_asset_id` | `TEXT` | anulável | Id do asset de selo customizado usado no envelope; `NULL` quando o selo é um dos temas fixos. |
 | `state` | `TEXT` | `NOT NULL DEFAULT 'unopened'`, `CHECK IN ('unopened','opening','reading','completed','expired')` | Ciclo de vida da carta. |
 | `created_at` | `INTEGER` | `NOT NULL` | Criação. |
 | `expires_at` | `INTEGER` | `NOT NULL` | Limite de validade. |
@@ -62,8 +65,36 @@ Uma nova abertura do link após a primeira é rejeitada com `409`/`410`; a carta
 
 A sessão é a única fonte autoritativa de progresso aceito; o cliente envia amostras, o servidor grava `last_progress`. Ver [`architecture.md`](architecture.md).
 
+Os prazos expostos por `/state` são **derivados**, não colunas persistentes:
+
+- `readDeadlineAt = sessions.created_at + letters.read_time_limit_seconds × 1000` (padrão 600 s quando a coluna é `NULL`);
+- `idleDeadlineAt = sessions.last_seen_at + IDLE_TIMEOUT_SECONDS × 1000` (padrão `600` s).
+
+`heartbeat` atualiza `last_seen_at`; o prazo absoluto depende apenas de `created_at` e da opção escolhida por quem enviou.
+
+## Tabela `letter_assets` (migração 002)
+
+| Coluna | Tipo | Restrição | Finalidade |
+| --- | --- | --- | --- |
+| `id` | `TEXT` | `PRIMARY KEY` | Identificador público opaco do arquivo. |
+| `letter_id` | `TEXT` | `REFERENCES letters(id) ON DELETE CASCADE` (anulável para órfãos) | Carta a que o arquivo foi vinculado; preenchido no `POST /api/letters`. |
+| `kind` | `TEXT` | `NOT NULL CHECK IN ('photo','seal')` | Foto no corpo da carta ou selo desenhado. |
+| `mime` | `TEXT` | `NOT NULL CHECK IN ('image/png','image/jpeg','image/webp')` | Tipo validado no upload. |
+| `width`, `height` | `INTEGER` | `NOT NULL` | Dimensões validadas no upload (sem reencode). |
+| `byte_size` | `INTEGER` | `NOT NULL` | Tamanho já validado (2 MiB para foto; 16 KiB para selo). |
+| `data` | `BLOB` | `NOT NULL` | Bytes da imagem, no mesmo SQLite do texto. |
+| `upload_token_hash` | `TEXT` | `UNIQUE` | Hash do token descartável; o token cru não é gravado. |
+| `attached` | `INTEGER` | `NOT NULL DEFAULT 0` | `1` depois que a carta referenciou o asset; `0` permite limpeza de uploads abandonados. |
+| `created_at` | `INTEGER` | `NOT NULL` | Upload. |
+
+Índices: `idx_letter_assets_letter_kind` em `(letter_id, kind)` e `idx_letter_assets_orphan` em `(attached, created_at)`.
+
+Manter os BLOBs no SQLite evita um segundo sistema de armazenamento com ciclo de vida próprio: a mesma transação que descarta o texto remove fotos e selo.
+
 ## Retenção e apagamento
 
 - **Validade padrão:** `LETTER_TTL_DAYS=30`. `expires_at` define quando uma carta não lida deixa de ser acessível; registros expirados são elegíveis à limpeza.
-- **Conclusão:** ao atingir `completed`, o texto em claro é descartado (`message` é `NOT NULL`, portanto o mecanismo exato de sobrescrita é detalhe de implementação). O título e os metadados mínimos podem permanecer para controle de validade e sessão.
-- **Privacidade:** nenhum token cru é gravado; apenas `token_hash`. Não há dados de cadastro de usuário.
+- **Conclusão ou prazo vencido:** ao atingir `completed`/`expired`, o texto em claro é descartado (`message` é `NOT NULL`, portanto o mecanismo exato de sobrescrita é detalhe de implementação). O título e os metadados mínimos podem permanecer para controle de validade e sessão.
+- **Apagamento atômico:** numa única transação `BEGIN IMMEDIATE`, a carta muda de estado, `message` é sobrescrito/vaciado e `DELETE FROM letter_assets WHERE letter_id = ?` remove fotos **e** selo. Não há janela em que o texto já foi apagado mas a imagem ainda é servida (ou vice-versa). Os tokens de upload são descartados no mesmo vínculo.
+- **Inatividade:** 10 minutos sem `last_seen_at` válido (`IDLE_TIMEOUT_SECONDS=600`) disparam o mesmo apagamento atômico; `read_time_limit_seconds` limita a leitura mesmo com heartbeat ativo.
+- **Privacidade:** nenhum token cru é gravado; apenas `token_hash` e `upload_token_hash`. Não há dados de cadastro de usuário.

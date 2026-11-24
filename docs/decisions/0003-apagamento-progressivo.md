@@ -40,3 +40,14 @@ O apagamento progressivo precisa acompanhar a rolagem com fluidez, sem apagar te
 - **Somente CSS scroll-driven:** sem fallback e com suporte insuficiente em iOS Safari.
 - **Canvas/WebGL:** perda de semântica e acessibilidade.
 - **Timers fixos por parágrafo:** ignora o tamanho real do texto e a velocidade individual de leitura.
+
+## Atualização (2026-11-24) — opção do remetente e gate de interação
+
+A decisão de rAF, linha de leitura, dwell e `IntersectionObserver` **continua valendo** quando o apagamento está ligado. Mudanças posteriores:
+
+1. `fadeEnabled` (`true` por padrão) permite que o remetente mantenha as palavras visíveis durante toda a leitura; nesse modo a contabilidade de progresso e a conclusão automática seguem ativas, e o texto só desaparece ao concluir.
+2. Mesmo com `fadeEnabled: true`, o efeito agora começa **após a primeira interação** (scroll, roda, toque ou tecla de navegação). Antes disso, a geometria do mount não apaga uma carta curta.
+3. A conclusão dispara o apagamento imediato de todos os blocos restantes; o servidor, não o cliente, continua sendo a autoridade que descarta o plaintext.
+4. Canvas continua **fora** do texto: a decisão original de não renderizar as palavras em canvas permanece. O canvas passou a ser usado apenas para desenhar o selo `custom`, enviado como asset PNG e exibido no envelope.
+
+Ver [`0004-limite-e-opcoes-de-leitura.md`](0004-limite-e-opcoes-de-leitura.md).

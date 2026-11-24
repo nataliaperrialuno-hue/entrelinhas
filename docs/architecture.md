@@ -8,9 +8,9 @@ Este documento descreve a estrutura em camadas do Entrelinhas, o fluxo de uma re
 | --- | --- | --- |
 | Apresentação | Formulário de criação, prévia e experiência de leitura; roteamento por `pathname` | `frontend/src/features`, `frontend/src/App.tsx` |
 | Cliente HTTP | Chamadas tipadas a `/api/*`, com `credentials: same-origin` e tratamento de `ApiError` | `frontend/src/lib/api.ts` |
-| Borda HTTP | Express 5, Helmet, JSON limitado a 512 kb, limitação de taxa e redirecionamento do link curto | `backend/src/app.ts` |
-| Domínio | Regras de criação, emissão de tokens, claim de sessão, progresso e conclusão | `backend/src/modules` (em implementação) |
-| Persistência | SQLite via `node:sqlite`, migrações e transações atômicas | `backend/src/db` |
+| Borda HTTP | Express 5, Helmet, JSON limitado a 512 kb, upload binário separado, limitação de taxa e redirecionamento do link curto | `backend/src/app.ts` |
+| Domínio | Regras de criação, emissão de tokens, upload/vínculo de assets, claim de sessão, progresso, heartbeat, prazos e conclusão | `backend/src/modules` |
+| Persistência | SQLite via `node:sqlite`, migrações 001/002 (`user_version = 2`) e transações atômicas | `backend/src/db` |
 
 O frontend nunca acessa o banco. O backend é a única autoridade sobre estado de carta, estado de sessão e progresso.
 
@@ -31,11 +31,16 @@ sequenceDiagram
     L->>A: GET /api/read/sessionId/state
     A-->>L: { state, progress }
     L->>A: POST /api/read/sessionId/open
-    A-->>L: LetterView
-    L->>A: POST /progress e POST /complete
-    A->>D: Atualiza progresso e conclui
-    A-->>L: { progress } e { state: completed }
+    A-->>L: LetterView (temas, fadeEnabled, selo custom)
+    L->>A: GET /api/assets/assetId (cookie da sessão)
+    A-->>L: bytes da foto/selo com no-store
+    L->>A: POST /progress, /heartbeat e /complete
+    A->>D: Atualiza last_seen_at, progresso e conclui
+    A->>D: Apaga message e letter_assets na mesma transação
+    A-->>L: { progress }, prazos e { state: completed }
 ```
+
+Antes da criação, fotos e selo desenhado seguem por `POST /api/assets` com `x-asset-kind` e voltam como `{ id, uploadToken }`; essas referências são enviadas em `POST /api/letters` e o token de upload é descartado. O autor pode escolher `fadeEnabled` e `readTimeLimitSeconds` por carta; `/state` devolve `readDeadlineAt`, `idleDeadlineAt`, `fadeEnabled` e `sealAssetId`.
 
 Em desenvolvimento, o Vite (`5173`) encaminha `/api`, `/c` e `/leitura` para a API (`3001`). Em produção, o próprio Express pode servir o build do frontend. Os contratos completos — incluindo códigos de status — estão em [`api.md`](api.md).
 
@@ -47,6 +52,9 @@ Em desenvolvimento, o Vite (`5173`) encaminha `/api`, `/c` e `/leitura` para a A
 - **Heartbeat e carência.** `HEARTBEAT_TTL_SECONDS` define a validade da presença da sessão; `SESSION_GRACE_MINUTES` limita a retomada única após interrupção. Depois da janela, a sessão expira. Ver [`decisions/0002-sessao-interrompida.md`](decisions/0002-sessao-interrompida.md).
 - **Conclusão idempotente.** `POST /complete` aceita `Idempotency-Key`; repetições não produzem efeitos adicionais.
 - **Conteúdo confiável, mas não confiável como HTML.** A mensagem da carta é texto puro: deve ser renderizada como texto, nunca injetada como markup. A formatação usa marcadores internos com whitelist, convertidos em elementos React; marcadores inválidos ou malformados permanecem como texto comum.
+- **Assets: token de upload ≠ credencial de leitura.** `uploadToken` só vincula o arquivo à carta; o download exige cookie da sessão ativa. MIME, *magic bytes*, dimensões e tamanho são validados no servidor.
+- **Dois prazos, uma autoridade.** `readDeadlineAt` é absoluto por carta e não muda com heartbeat; `idleDeadlineAt` deriva de `last_seen_at`. A expiração de qualquer um apaga texto e mídia atomicamente e faz as rotas de leitura responderem `410`.
+- **Apagamento visual é opção do remetente.** `fadeEnabled: false` mantém as palavras visíveis até a conclusão, mas o descarte no servidor permanece obrigatório; com `true`, o efeito espera a primeira interação do leitor.
 
 ## Formatação e limites
 
@@ -71,7 +79,7 @@ Marcadores inválidos ou malformados são exibidos como texto comum. HTML enviad
 - **`100dvh`:** altura dinâmica da viewport em dispositivos móveis, reduzindo saltos causados por barras de navegador.
 - **CSS scroll-driven:** usado apenas para realce visual sob `@supports`, com fallback em JavaScript; animações são desligadas com `prefers-reduced-motion`.
 
-A fundamentação completa está em [`decisions/0003-apagamento-progressivo.md`](decisions/0003-apagamento-progressivo.md).
+O selo `custom` é desenhado em canvas apenas no painel do autor; o resultado vira PNG validado e enviado como asset. O texto continua no DOM para preservar seleção e leitores de tela. A fundamentação completa está em [`decisions/0003-apagamento-progressivo.md`](decisions/0003-apagamento-progressivo.md) e [`decisions/0004-limite-e-opcoes-de-leitura.md`](decisions/0004-limite-e-opcoes-de-leitura.md).
 
 ## Índice de decisões (ADRs)
 
@@ -80,3 +88,4 @@ A fundamentação completa está em [`decisions/0003-apagamento-progressivo.md`]
 | [0001 — Token e hash](decisions/0001-token-e-hash.md) | Geração de token de 256 bits, HMAC-SHA256, dois tokens e cookie versus URL |
 | [0002 — Sessão interrompida](decisions/0002-sessao-interrompida.md) | Política híbrida de retomada com janela de carência de 10 minutos |
 | [0003 — Apagamento progressivo](decisions/0003-apagamento-progressivo.md) | rAF, linha de leitura, dwell, IntersectionObserver e compatibilidade com iOS Safari |
+| [0004 — Limite e opções de leitura](decisions/0004-limite-e-opcoes-de-leitura.md) | Prazo por carta, apagamento visual opcional, inatividade por `last_seen_at` e assets no SQLite |

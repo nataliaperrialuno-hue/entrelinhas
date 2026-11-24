@@ -37,3 +37,12 @@ A decisão prioriza a experiência de quem realmente está lendo, limitando a to
 - **Expiração imediata a cada perda de heartbeat:** simples, mas excessivamente punitiva em redes móveis.
 - **Retomada sempre enquanto a carta não estiver concluída:** conveniente, mas transforma o link em acesso permanente se vazado.
 - **Renovação automática indefinida:** elimina a natureza efêmera do produto.
+
+## Atualização (2026-11-24) — inatividade e prazo absoluto
+
+A decisão híbrida acima **permanece vigente** para retomada de sessão interrompida (`SESSION_GRACE_MINUTES=10` e `epoch`). A migração 002 acrescentou dois limites distintos, que não revogam a carência:
+
+- `IDLE_TIMEOUT_SECONDS=600`: inatividade medida por `sessions.last_seen_at`. `POST /heartbeat` renova apenas esse prazo (`idleDeadlineAt`).
+- `readTimeLimitSeconds` por carta (60..3600 s, padrão 600): prazo absoluto desde `sessions.created_at` (`readDeadlineAt`), que **nenhum** heartbeat renova.
+
+Ao vencer qualquer um dos dois, o texto e os assets são descartados atomicamente e as rotas de leitura passam a responder `410`. Ou seja: a carência continua decidindo *se* a sessão pode ser retomada; os novos prazos decidem *até quando* a carta pode ser lida. Ver [`0004-limite-e-opcoes-de-leitura.md`](0004-limite-e-opcoes-de-leitura.md).
