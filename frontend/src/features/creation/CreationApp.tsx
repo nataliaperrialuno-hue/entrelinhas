@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, FormEvent } from 'react';
 import { assetUrl, createLetter, uploadAsset } from '../../lib/api';
 import {
@@ -9,6 +9,14 @@ import {
 } from '../../shared/limits';
 import type { AssetRef, LetterView } from '../../shared/types';
 import { IdentificationFields } from './IdentificationFields';
+import {
+  deleteDraft,
+  getWrittenCount,
+  incrementWrittenCount,
+  listDrafts,
+  saveDraft,
+} from './letterNotebook';
+import type { DraftRecord } from './letterNotebook';
 import { LetterEditor } from './LetterEditor';
 import { PersonalizationPanel } from './PersonalizationPanel';
 import { createPhotoId, removeAssetToken, replaceAssetIdInText } from './photoAssets';
@@ -66,13 +74,23 @@ export function CreationApp() {
     getPreviewUrl,
     revokePreviewUrl,
     resolveAsset,
+    applyDraft,
+    reset,
   } = useLetterDraft();
 
   const [status, setStatus] = useState<SubmitStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [pendingUploads, setPendingUploads] = useState(0);
+  const [writtenCount, setWrittenCount] = useState(0);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const cancelledPhotoIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setWrittenCount(getWrittenCount());
+  }, []);
 
   const previewLetter = useMemo<LetterView>(
     () => ({
@@ -169,6 +187,50 @@ export function CreationApp() {
     if (objectUrl !== null) registerPreviewUrl(asset.id, objectUrl);
   }
 
+  function handleSaveDraft(): void {
+    try {
+      const saved = saveDraft(draft);
+      setDrafts(listDrafts());
+      setDraftStatus(
+        `Rascunho guardado em ${new Date(saved.savedAt).toLocaleTimeString('pt-BR')}.`,
+      );
+      setErrorMessage(null);
+    } catch (error) {
+      setDraftStatus(
+        error instanceof Error ? error.message : 'Não foi possível guardar o rascunho localmente.',
+      );
+    }
+  }
+
+  function handleToggleDrafts(): void {
+    const opening = !draftsOpen;
+    setDraftsOpen(opening);
+    if (opening) setDrafts(listDrafts());
+  }
+
+  function handleLoadDraft(record: DraftRecord): void {
+    applyDraft(record.draft);
+    setShareUrl(null);
+    setStatus('idle');
+    setErrorMessage(null);
+    setDraftsOpen(false);
+    setDraftStatus('Rascunho carregado.');
+  }
+
+  function handleDeleteDraft(id: string): void {
+    deleteDraft(id);
+    setDrafts(listDrafts());
+  }
+
+  function handleNewLetter(): void {
+    reset();
+    setShareUrl(null);
+    setStatus('idle');
+    setErrorMessage(null);
+    setDraftStatus(null);
+    setDraftsOpen(false);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
@@ -190,6 +252,12 @@ export function CreationApp() {
     try {
       const response = await createLetter(draft);
       setShareUrl(response.url);
+      // A carta já foi criada (201): indisponibilidade do storage não desfaz o sucesso.
+      try {
+        setWrittenCount(incrementWrittenCount());
+      } catch {
+        // Contador local é apenas informativo; não interfere na carta enviada.
+      }
       setStatus('idle');
     } catch (error) {
       setStatus('error');
@@ -213,12 +281,69 @@ export function CreationApp() {
     event.preventDefault();
   }
 
+  const showAssetNotice =
+    draft.theme.seal === 'custom' ||
+    drafts.some((item) => item.draft.theme.seal === 'custom');
+
   return (
     <main
       className="creation-page"
       onDragOver={handleContainerDragOver}
       onDrop={handleContainerDrop}
     >
+      <nav className="creation-menu" aria-label="Ferramentas de criação">
+        <div className="creation-menu__bar">
+          <button className="btn btn--ghost" type="button" onClick={handleNewLetter}>
+            Nova carta
+          </button>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            aria-expanded={draftsOpen}
+            aria-controls="drafts-panel"
+            onClick={handleToggleDrafts}
+          >
+            Rascunhos
+          </button>
+        </div>
+        <section
+          className="drafts-panel"
+          id="drafts-panel"
+          aria-label="Rascunhos salvos"
+          hidden={!draftsOpen}
+        >
+          {drafts.length === 0 ? (
+            <p className="drafts-panel__empty">Nenhum rascunho salvo.</p>
+          ) : (
+            <ul className="drafts-panel__list">
+              {drafts.map((record) => (
+                <li className="drafts-panel__item" key={record.id}>
+                  <div className="drafts-panel__meta">
+                    <strong>{record.draft.title || 'Carta sem título'}</strong>
+                    <time dateTime={new Date(record.savedAt).toISOString()}>
+                      {new Date(record.savedAt).toLocaleString('pt-BR')}
+                    </time>
+                  </div>
+                  <div className="drafts-panel__actions">
+                    <button type="button" onClick={() => handleLoadDraft(record)}>
+                      Carregar
+                    </button>
+                    <button type="button" onClick={() => handleDeleteDraft(record.id)}>
+                      Excluir
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {showAssetNotice && (
+            <p className="drafts-panel__notice">
+              Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.
+            </p>
+          )}
+        </section>
+      </nav>
+
       <div className="creation-shell">
         <header className="creation-header">
           <p className="creation-header__eyebrow">Cartas que atravessam o tempo</p>
@@ -230,7 +355,7 @@ export function CreationApp() {
 
         <div className="creation-layout">
           {shareUrl ? (
-            <ShareBox url={shareUrl} />
+            <ShareBox url={shareUrl} writtenCount={writtenCount} />
           ) : (
             <form className="creation-form" onSubmit={(event) => void handleSubmit(event)} noValidate>
               <section className="form-card" aria-labelledby="identification-heading">
@@ -336,6 +461,14 @@ export function CreationApp() {
                       ? 'Aguardando fotos…'
                       : 'Guardar carta'}
                 </button>
+                <button className="btn btn--ghost" type="button" onClick={handleSaveDraft}>
+                  Salvar rascunho
+                </button>
+                {draftStatus && (
+                  <p className="draft-status" role="status">
+                    {draftStatus}
+                  </p>
+                )}
                 {status === 'sending' && (
                   <p className="sending-note" role="status">
                     Guardando sua carta com cuidado…

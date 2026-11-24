@@ -21,6 +21,8 @@ export interface UseLetterDraftResult {
   getPreviewUrl: (id: string) => string | null;
   revokePreviewUrl: (id: string) => void;
   resolveAsset: (id: string) => string | null;
+  /** Substitui o draft atual (ex.: rascunho restaurado), revogando prévia antiga. */
+  applyDraft: (next: LetterDraft) => void;
   reset: () => void;
 }
 
@@ -123,11 +125,23 @@ export function useLetterDraft(): UseLetterDraftResult {
     [draft.assets],
   );
 
-  const reset = useCallback((): void => {
+  /** Toda troca completa de draft libera as object URLs das prévias anteriores. */
+  const replaceDraft = useCallback((next: LetterDraft): void => {
     for (const url of previewUrlsRef.current.values()) URL.revokeObjectURL(url);
     previewUrlsRef.current.clear();
-    setDraft(createInitialDraft());
+    setDraft({ ...next, theme: { ...next.theme } });
   }, []);
+
+  const applyDraft = useCallback(
+    (next: LetterDraft): void => {
+      replaceDraft(next);
+    },
+    [replaceDraft],
+  );
+
+  const reset = useCallback((): void => {
+    replaceDraft(createInitialDraft());
+  }, [replaceDraft]);
 
   return {
     draft,
@@ -142,6 +156,7 @@ export function useLetterDraft(): UseLetterDraftResult {
     getPreviewUrl,
     revokePreviewUrl,
     resolveAsset,
+    applyDraft,
     reset,
   };
 }

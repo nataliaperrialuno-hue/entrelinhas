@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 
 interface ShareBoxProps {
   url: string;
+  /** Total de cartas escritas neste navegador. */
+  writtenCount: number;
   message?: string;
 }
 
@@ -9,7 +11,7 @@ type CopyState = 'idle' | 'copied' | 'error';
 
 const DEFAULT_SHARE_MESSAGE = 'Recebi uma carta pelo Entrelinhas. Leia aqui: ';
 
-export function ShareBox({ url, message = DEFAULT_SHARE_MESSAGE }: ShareBoxProps) {
+export function ShareBox({ url, writtenCount, message = DEFAULT_SHARE_MESSAGE }: ShareBoxProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [copyState, setCopyState] = useState<CopyState>('idle');
 
@@ -55,6 +57,9 @@ export function ShareBox({ url, message = DEFAULT_SHARE_MESSAGE }: ShareBoxProps
       </h2>
       <p className="share-box__lead">
         Entregue este link a quem deve lê-lo. Ele é a única chave para abrir a carta.
+      </p>
+      <p className="share-box__counter">
+        {`Você já escreveu ${writtenCount} carta${writtenCount === 1 ? '' : 's'} neste navegador.`}
       </p>
 
       <div className="share-box__link">

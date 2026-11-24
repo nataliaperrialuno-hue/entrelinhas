@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLetter, uploadAsset } from '../../lib/api';
 import { MAX_PHOTO_BYTES } from '../../shared/limits';
 import { CreationApp } from './CreationApp';
+import { WRITTEN_COUNT_STORAGE_KEY } from './letterNotebook';
 
 vi.mock('../../lib/api', () => ({
   createLetter: vi.fn(() => Promise.resolve({ url: '/c/abc123' })),
@@ -52,6 +53,7 @@ function lastDraft(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   createLetterMock.mockReset();
   createLetterMock.mockResolvedValue({ url: '/c/abc123' });
   uploadAssetMock.mockReset();
@@ -347,5 +349,100 @@ describe('CreationApp', () => {
 
     expect(screen.queryByAltText('Prévia do selo desenhado')).not.toBeInTheDocument();
     expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it('guarda um rascunho local com status acessível e restaura o conteúdo pelo painel', () => {
+    render(<CreationApp />);
+    fireEvent.change(screen.getByLabelText('Título da carta'), {
+      target: { value: 'Rascunho A' },
+    });
+    fireEvent.change(screen.getByLabelText('Mensagem'), { target: { value: 'Texto salvo.' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Rascunho guardado em');
+    fireEvent.change(screen.getByLabelText('Título da carta'), {
+      target: { value: 'Título temporário' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
+    expect(screen.getByRole('button', { name: 'Carregar' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar' }));
+
+    expect(screen.getByLabelText('Título da carta')).toHaveValue('Rascunho A');
+    expect(screen.getByLabelText('Mensagem')).toHaveValue('Texto salvo.');
+  });
+
+  it('mostra estado vazio e exclui rascunhos pelo painel', () => {
+    render(<CreationApp />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
+    expect(screen.getByText('Nenhum rascunho salvo.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    expect(screen.getByRole('button', { name: 'Excluir' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
+    expect(screen.getByText('Nenhum rascunho salvo.')).toBeInTheDocument();
+  });
+
+  it('não guarda fotos no rascunho local', async () => {
+    render(<CreationApp />);
+    fireEvent.change(fileInput(), { target: { files: [photo()] } });
+    await waitFor(() => expect(uploadAssetMock).toHaveBeenCalled());
+    expect((screen.getByLabelText('Mensagem') as HTMLTextAreaElement).value).toMatch(/\[\[foto:/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar' }));
+
+    expect(screen.getByLabelText('Mensagem')).toHaveValue('');
+    expect(screen.queryByAltText('Foto da carta')).not.toBeInTheDocument();
+  });
+
+  it('avisa no painel que fotos e selo desenhado não voltam no rascunho', () => {
+    render(<CreationApp />);
+    fireEvent.click(screen.getByRole('radio', { name: /Em branco/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
+
+    expect(
+      screen.getByText('Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.'),
+    ).toBeInTheDocument();
+  });
+
+  it('Nova carta zera os campos e mantém o menu disponível', () => {
+    render(<CreationApp />);
+    fireEvent.change(screen.getByLabelText('De:'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Título da carta'), { target: { value: 'Título' } });
+    fireEvent.change(screen.getByLabelText('Mensagem'), { target: { value: 'Mensagem' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nova carta' }));
+
+    expect(screen.getByLabelText('De:')).toHaveValue('');
+    expect(screen.getByLabelText('Título da carta')).toHaveValue('');
+    expect(screen.getByLabelText('Mensagem')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Rascunhos' })).toBeInTheDocument();
+  });
+
+  it('conta cartas deste navegador com singular e plural corretos', async () => {
+    render(<CreationApp />);
+    await submitValidLetter();
+
+    expect(screen.getByText('Você já escreveu 1 carta neste navegador.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nova carta' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nova carta' }));
+    await submitValidLetter();
+
+    expect(screen.getByText('Você já escreveu 2 cartas neste navegador.')).toBeInTheDocument();
+  });
+
+  it('retoma o contador salvo ao montar a página', async () => {
+    localStorage.setItem(WRITTEN_COUNT_STORAGE_KEY, '2');
+    render(<CreationApp />);
+    await submitValidLetter();
+
+    expect(screen.getByText('Você já escreveu 3 cartas neste navegador.')).toBeInTheDocument();
   });
 });
