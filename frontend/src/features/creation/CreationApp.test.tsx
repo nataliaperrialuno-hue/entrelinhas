@@ -85,4 +85,42 @@ describe('CreationApp', () => {
 
     expect(screen.getByRole('article')).toHaveClass('theme-palette-rose');
   });
+
+  it('conta palavras e impede o envio acima do limite', () => {
+    render(<CreationApp />);
+
+    const textarea = screen.getByLabelText('Mensagem');
+    fireEvent.change(textarea, { target: { value: 'uma duas tres' } });
+    expect(document.getElementById('message-count')).toHaveTextContent('3');
+
+    const longText = Array.from({ length: 4001 }, (_, index) => `palavra${index}`).join(' ');
+    fireEvent.change(textarea, { target: { value: longText } });
+    fireEvent.change(screen.getByLabelText('Título da carta'), {
+      target: { value: 'Carta longa' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar carta/i }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/passou de/i);
+    expect(createLetterMock).not.toHaveBeenCalled();
+  });
+
+  it('formata a seleção com o atalho Ctrl+B', () => {
+    render(<CreationApp />);
+
+    const textarea = screen.getByLabelText('Mensagem') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'Olá mundo' } });
+    textarea.setSelectionRange(0, 3);
+    fireEvent.keyDown(textarea, { key: 'b', ctrlKey: true });
+
+    expect(textarea).toHaveValue('**Olá** mundo');
+  });
+
+  it('aplica a cor da letra escolhida à prévia', () => {
+    render(<CreationApp />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cor da letra Vinho' }));
+
+    const preview = screen.getByRole('article');
+    expect(preview.getAttribute('style')).toContain('#7c2d38');
+  });
 });

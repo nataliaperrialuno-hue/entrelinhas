@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+import { renderRichText } from './richText';
 import { themeClassNames } from './themes';
 import type { LetterView } from './types';
 
@@ -7,9 +9,17 @@ interface LetterSheetProps {
 }
 
 export function LetterSheet({ letter, className }: LetterSheetProps) {
+  // A cor opcional tem precedência sobre a tinta da paleta; cartas antigas
+  // continuam usando apenas as classes de tema.
+  const inkStyle =
+    letter.theme.inkColor === undefined
+      ? undefined
+      : ({ '--letter-ink': letter.theme.inkColor } as CSSProperties);
+
   return (
     <article
       className={`letter-sheet ${themeClassNames(letter.theme)} ${className ?? ''}`}
+      style={inkStyle}
       data-letter-sheet="true"
     >
       <header className="letter-sheet__header">
@@ -27,7 +37,7 @@ export function LetterSheet({ letter, className }: LetterSheetProps) {
             data-letter-block="true"
             data-block-index={index}
           >
-            {paragraph}
+            {renderRichText(paragraph)}
           </p>
         ))}
       </div>

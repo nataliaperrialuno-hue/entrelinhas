@@ -41,6 +41,11 @@ describe('dwellForWords', () => {
     expect(dwellForWords(20)).toBe(600);
     expect(dwellForWords(100)).toBe(3000);
   });
+
+  it('limita o dwell a 4 s para que cartas longas possam concluir', () => {
+    expect(dwellForWords(134)).toBe(4000);
+    expect(dwellForWords(4000)).toBe(4000);
+  });
 });
 
 describe('mergeProgress', () => {

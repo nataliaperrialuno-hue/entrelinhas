@@ -4,7 +4,7 @@
   padding: clamp(1.75rem, 5vw, 3.5rem);
   line-height: 1.8;
   background: var(--paper-bg);
-  color: var(--ink);
+  color: var(--letter-ink, var(--ink));
   box-shadow: var(--paper-shadow);
   border-radius: 14px;
   font-family: var(--font-letter);
@@ -54,6 +54,41 @@
   text-align: right;
   font-style: italic;
   color: var(--accent);
+}
+
+/*
+ * Trechos formatados pelo painel do editor. As cores vêm dos marcadores, que
+ * são validados pelo parser antes de virarem estilo inline.
+ */
+.letter-sheet mark {
+  padding: 0 0.12em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: inherit;
+}
+
+.rt-font-serif {
+  font-family: var(--font-serif);
+}
+
+.rt-font-hand {
+  font-family: var(--font-hand);
+}
+
+.rt-font-mono {
+  font-family: var(--font-mono);
+}
+
+.rt-size-sm {
+  font-size: 0.85em;
+}
+
+.rt-size-md {
+  font-size: 1em;
+}
+
+.rt-size-lg {
+  font-size: 1.22em;
 }
 
 @media (prefers-reduced-motion: reduce) {

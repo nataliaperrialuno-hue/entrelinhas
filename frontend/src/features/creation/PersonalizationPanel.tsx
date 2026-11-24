@@ -1,10 +1,4 @@
-import {
-  ENVELOPES,
-  PAPERS,
-  PALETTES,
-  SEALS,
-  TYPOGRAPHIES,
-} from '../../shared/themes';
+import { DEFAULT_INK_COLOR, ENVELOPES, LETTER_COLORS, PAPERS, PALETTES, SEALS, TYPOGRAPHIES } from '../../shared/themes';
 import type { ThemeSelection } from '../../shared/types';
 
 interface ThemeOptionLike<Id extends string> {
@@ -104,6 +98,40 @@ export function PersonalizationPanel({ theme, onThemeChange }: PersonalizationPa
         value={theme.paper}
         onChange={(id) => onThemeChange('paper', id)}
       />
+
+      <fieldset className="theme-group">
+        <legend className="theme-group__legend">Cor da letra</legend>
+        <div className="ink-colors" role="group" aria-label="Cor da letra da carta">
+          {LETTER_COLORS.map((color) => (
+            <button
+              className={`ink-swatch${theme.inkColor === color.value ? ' ink-swatch--selected' : ''}`}
+              key={color.id}
+              type="button"
+              style={{ backgroundColor: color.value }}
+              title={color.label}
+              aria-label={`Cor da letra ${color.label}`}
+              aria-pressed={theme.inkColor === color.value}
+              onClick={() => onThemeChange('inkColor', color.value)}
+            />
+          ))}
+          <label className="ink-custom">
+            <span className="sr-only">Cor personalizada</span>
+            <input
+              type="color"
+              value={theme.inkColor ?? DEFAULT_INK_COLOR}
+              onChange={(event) => onThemeChange('inkColor', event.target.value.toLowerCase())}
+            />
+            <span className="ink-custom__label">Personalizada</span>
+          </label>
+          <button
+            className="ink-reset"
+            type="button"
+            onClick={() => onThemeChange('inkColor', undefined)}
+          >
+            Usar cor da paleta
+          </button>
+        </div>
+      </fieldset>
     </div>
   );
 }

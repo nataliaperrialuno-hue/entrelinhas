@@ -21,9 +21,12 @@ export function blockProgress(lineY: number, fadeSpan: number, rectBottom: numbe
   return clamp((lineY - rectBottom) / fadeSpan);
 }
 
+/** Teto da permanência: textos longos não podem travar a conclusão da carta. */
+export const MAX_DWELL_MS = 4000;
+
 /** Tempo mínimo de permanência de um bloco acima da linha, em milissegundos. */
 export function dwellForWords(words: number): number {
-  return Math.max(400, words * 30);
+  return Math.min(MAX_DWELL_MS, Math.max(400, words * 30));
 }
 
 export interface ShouldCompleteArgs {

@@ -13,6 +13,12 @@ interface ThemeOption<Id extends string> {
   description: string;
 }
 
+export interface LetterColor {
+  id: string;
+  label: string;
+  value: string;
+}
+
 export const ENVELOPES = [
   { id: 'classic', label: 'Clássico', description: 'Sobrescrito tradicional, com detalhes discretos.' },
   { id: 'floral', label: 'Floral', description: 'Motivos botânicos sutis nas bordas.' },
@@ -43,6 +49,21 @@ export const PAPERS = [
   { id: 'plain', label: 'Simples', description: 'Superfície lisa e sem marcas.' },
   { id: 'aged', label: 'Envelhecido', description: 'Papel amarelado, com sombra suave.' },
 ] as const satisfies readonly ThemeOption<PaperId>[];
+
+export const LETTER_COLORS = [
+  { id: 'ink', label: 'Tinta', value: '#3a2e24' },
+  { id: 'wine', label: 'Vinho', value: '#7c2d38' },
+  { id: 'rose', label: 'Rosado', value: '#a44763' },
+  { id: 'amber', label: 'Âmbar', value: '#a46a1f' },
+  { id: 'olive', label: 'Oliva', value: '#5c6b32' },
+  { id: 'sky', label: 'Céu', value: '#356b8c' },
+  { id: 'indigo', label: 'Índigo', value: '#3f4c8c' },
+  { id: 'violet', label: 'Violeta', value: '#6d4389' },
+  { id: 'graphite', label: 'Grafite', value: '#555b60' },
+  { id: 'night', label: 'Noite', value: '#ece7dc' },
+] as const satisfies readonly LetterColor[];
+
+export const DEFAULT_INK_COLOR = '#3a2e24';
 
 export const DEFAULT_THEME: ThemeSelection = {
   envelope: 'classic',

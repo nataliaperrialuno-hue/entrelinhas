@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { createLetter } from '../../lib/api';
+import { countWords, MAX_LETTER_CHARS, MAX_LETTER_WORDS } from '../../shared/limits';
 import type { LetterView } from '../../shared/types';
 import { IdentificationFields } from './IdentificationFields';
 import { LetterEditor } from './LetterEditor';
@@ -18,6 +19,12 @@ function validateDraft(title: string, message: string): string | null {
   }
   if (message.trim().length === 0) {
     return 'Escreva a mensagem: mesmo poucas palavras já bastam.';
+  }
+  if (countWords(message) > MAX_LETTER_WORDS) {
+    return `Esta carta passou de ${MAX_LETTER_WORDS.toLocaleString('pt-BR')} palavras. Reduza o texto para guardá-la.`;
+  }
+  if (message.length > MAX_LETTER_CHARS) {
+    return `Esta carta passou de ${MAX_LETTER_CHARS.toLocaleString('pt-BR')} caracteres. Reduza o texto para guardá-la.`;
   }
   return null;
 }

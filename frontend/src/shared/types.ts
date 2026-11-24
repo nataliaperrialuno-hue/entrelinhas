@@ -10,6 +10,8 @@ export interface ThemeSelection {
   palette: PaletteId;
   typography: TypographyId;
   paper: PaperId;
+  /** Opcional por retrocompatibilidade com cartas antigas. */
+  inkColor?: string;
 }
 
 export interface LetterDraft {
