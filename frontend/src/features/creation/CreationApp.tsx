@@ -86,11 +86,27 @@ export function CreationApp() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const cancelledPhotoIdsRef = useRef<Set<string>>(new Set());
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setWrittenCount(getWrittenCount());
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return;
+      setMenuOpen(false);
+      // O foco volta ao hambúrguer depois do re-render, como em LetterEditor.
+      window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+    }
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [menuOpen]);
 
   const previewLetter = useMemo<LetterView>(
     () => ({
@@ -202,6 +218,20 @@ export function CreationApp() {
     }
   }
 
+  function handleToggleMenu(): void {
+    const opening = !menuOpen;
+    setMenuOpen(opening);
+    if (!opening) {
+      // O foco volta ao hambúrguer depois do re-render, como em LetterEditor.
+      window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+    }
+  }
+
+  function handleCloseMenu(): void {
+    setMenuOpen(false);
+    window.setTimeout(() => menuButtonRef.current?.focus(), 0);
+  }
+
   function handleToggleDrafts(): void {
     const opening = !draftsOpen;
     setDraftsOpen(opening);
@@ -215,6 +245,7 @@ export function CreationApp() {
     setErrorMessage(null);
     setDraftsOpen(false);
     setDraftStatus('Rascunho carregado.');
+    handleCloseMenu();
   }
 
   function handleDeleteDraft(id: string): void {
@@ -229,6 +260,7 @@ export function CreationApp() {
     setErrorMessage(null);
     setDraftStatus(null);
     setDraftsOpen(false);
+    handleCloseMenu();
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -293,6 +325,40 @@ export function CreationApp() {
     >
       <nav className="creation-menu" aria-label="Ferramentas de criação">
         <div className="creation-menu__bar">
+          <button
+            ref={menuButtonRef}
+            className="btn btn--ghost creation-menu__toggle"
+            type="button"
+            aria-label="Abrir menu"
+            aria-expanded={menuOpen}
+            aria-controls="creation-menu-drawer"
+            onClick={handleToggleMenu}
+          >
+            <svg
+              className="creation-menu__icon"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+        </div>
+        <div
+          className="creation-menu__overlay"
+          hidden={!menuOpen}
+          aria-hidden="true"
+          onClick={handleCloseMenu}
+        />
+        <div className="creation-menu__drawer" id="creation-menu-drawer" hidden={!menuOpen}>
           <button className="btn btn--ghost" type="button" onClick={handleNewLetter}>
             Nova carta
           </button>
@@ -305,43 +371,43 @@ export function CreationApp() {
           >
             Rascunhos
           </button>
+          <section
+            className="drafts-panel"
+            id="drafts-panel"
+            aria-label="Rascunhos salvos"
+            hidden={!draftsOpen}
+          >
+            {drafts.length === 0 ? (
+              <p className="drafts-panel__empty">Nenhum rascunho salvo.</p>
+            ) : (
+              <ul className="drafts-panel__list">
+                {drafts.map((record) => (
+                  <li className="drafts-panel__item" key={record.id}>
+                    <div className="drafts-panel__meta">
+                      <strong>{record.draft.title || 'Carta sem título'}</strong>
+                      <time dateTime={new Date(record.savedAt).toISOString()}>
+                        {new Date(record.savedAt).toLocaleString('pt-BR')}
+                      </time>
+                    </div>
+                    <div className="drafts-panel__actions">
+                      <button type="button" onClick={() => handleLoadDraft(record)}>
+                        Carregar
+                      </button>
+                      <button type="button" onClick={() => handleDeleteDraft(record.id)}>
+                        Excluir
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {showAssetNotice && (
+              <p className="drafts-panel__notice">
+                Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.
+              </p>
+            )}
+          </section>
         </div>
-        <section
-          className="drafts-panel"
-          id="drafts-panel"
-          aria-label="Rascunhos salvos"
-          hidden={!draftsOpen}
-        >
-          {drafts.length === 0 ? (
-            <p className="drafts-panel__empty">Nenhum rascunho salvo.</p>
-          ) : (
-            <ul className="drafts-panel__list">
-              {drafts.map((record) => (
-                <li className="drafts-panel__item" key={record.id}>
-                  <div className="drafts-panel__meta">
-                    <strong>{record.draft.title || 'Carta sem título'}</strong>
-                    <time dateTime={new Date(record.savedAt).toISOString()}>
-                      {new Date(record.savedAt).toLocaleString('pt-BR')}
-                    </time>
-                  </div>
-                  <div className="drafts-panel__actions">
-                    <button type="button" onClick={() => handleLoadDraft(record)}>
-                      Carregar
-                    </button>
-                    <button type="button" onClick={() => handleDeleteDraft(record.id)}>
-                      Excluir
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          {showAssetNotice && (
-            <p className="drafts-panel__notice">
-              Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.
-            </p>
-          )}
-        </section>
       </nav>
 
       <div className="creation-shell">

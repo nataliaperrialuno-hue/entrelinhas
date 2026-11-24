@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLetter, uploadAsset } from '../../lib/api';
-import { MAX_PHOTO_BYTES } from '../../shared/limits';
+import { MAX_LETTER_WORDS, MAX_PHOTO_BYTES } from '../../shared/limits';
 import { CreationApp } from './CreationApp';
 import { WRITTEN_COUNT_STORAGE_KEY } from './letterNotebook';
 
@@ -138,7 +138,10 @@ describe('CreationApp', () => {
     fireEvent.change(textarea, { target: { value: 'uma duas tres' } });
     expect(document.getElementById('message-count')).toHaveTextContent('3');
 
-    const longText = Array.from({ length: 4001 }, (_, index) => `palavra${index}`).join(' ');
+    const longText = Array.from(
+      { length: MAX_LETTER_WORDS + 1 },
+      (_, index) => `palavra${index}`,
+    ).join(' ');
     fireEvent.change(textarea, { target: { value: longText } });
     fireEvent.change(screen.getByLabelText('Título da carta'), {
       target: { value: 'Carta longa' },
@@ -365,6 +368,7 @@ describe('CreationApp', () => {
       target: { value: 'Título temporário' },
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
     expect(screen.getByRole('button', { name: 'Carregar' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Carregar' }));
@@ -376,6 +380,7 @@ describe('CreationApp', () => {
   it('mostra estado vazio e exclui rascunhos pelo painel', () => {
     render(<CreationApp />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
     expect(screen.getByText('Nenhum rascunho salvo.')).toBeInTheDocument();
 
@@ -393,6 +398,7 @@ describe('CreationApp', () => {
     expect((screen.getByLabelText('Mensagem') as HTMLTextAreaElement).value).toMatch(/\[\[foto:/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
     fireEvent.click(screen.getByRole('button', { name: 'Carregar' }));
 
@@ -404,6 +410,7 @@ describe('CreationApp', () => {
     render(<CreationApp />);
     fireEvent.click(screen.getByRole('radio', { name: /Em branco/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Rascunhos' }));
 
     expect(
@@ -417,11 +424,13 @@ describe('CreationApp', () => {
     fireEvent.change(screen.getByLabelText('Título da carta'), { target: { value: 'Título' } });
     fireEvent.change(screen.getByLabelText('Mensagem'), { target: { value: 'Mensagem' } });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     fireEvent.click(screen.getByRole('button', { name: 'Nova carta' }));
 
     expect(screen.getByLabelText('De:')).toHaveValue('');
     expect(screen.getByLabelText('Título da carta')).toHaveValue('');
     expect(screen.getByLabelText('Mensagem')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     expect(screen.getByRole('button', { name: 'Rascunhos' })).toBeInTheDocument();
   });
 
@@ -430,6 +439,7 @@ describe('CreationApp', () => {
     await submitValidLetter();
 
     expect(screen.getByText('Você já escreveu 1 carta neste navegador.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menu' }));
     expect(screen.getByRole('button', { name: 'Nova carta' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Nova carta' }));

@@ -57,6 +57,7 @@ test.describe('Caderno local de rascunhos', () => {
     await expect.poll(() => readStorage(page, DRAFTS_KEY)).not.toBeNull();
 
     await page.reload();
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
     await page.getByRole('button', { name: 'Rascunhos' }).click();
     await expect(
       page.getByText('Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.'),
@@ -69,6 +70,7 @@ test.describe('Caderno local de rascunhos', () => {
   });
 
   test('painel Rascunhos mostra o texto vazio quando não há rascunhos', async ({ page }) => {
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
     await page.getByRole('button', { name: 'Rascunhos' }).click();
     await expect(page.getByText('Nenhum rascunho salvo.')).toBeVisible();
     expect(await readStorage(page, DRAFTS_KEY)).toBeNull();
@@ -79,6 +81,7 @@ test.describe('Caderno local de rascunhos', () => {
     await page.getByRole('button', { name: 'Salvar rascunho' }).click();
     await expect.poll(() => readStorage(page, DRAFTS_KEY)).not.toBeNull();
 
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
     await page.getByRole('button', { name: 'Rascunhos' }).click();
     // Aceita uma eventual confirmação; segue funcionando se não houver diálogo.
     page.once('dialog', async (dialog) => {
@@ -115,6 +118,7 @@ test.describe('Caderno local de rascunhos', () => {
     ).toBeVisible();
     expect(await readStorage(page, LETTERS_WRITTEN_KEY)).not.toBeNull();
 
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
     await page.getByRole('button', { name: 'Nova carta' }).click();
     await fillIdentityAndMessage(page, 'Segunda carta', 'Mensagem da segunda carta.');
     await page.getByRole('button', { name: 'Guardar carta' }).click();
@@ -128,6 +132,7 @@ test.describe('Caderno local de rascunhos', () => {
     await fillIdentityAndMessage(page, 'Rascunho temporário', 'Texto que deve desaparecer.');
     await page.getByLabel('Assinatura').fill('Assinatura temporária');
 
+    await page.getByRole('button', { name: 'Abrir menu' }).click();
     await page.getByRole('button', { name: 'Nova carta' }).click();
 
     await expect(page.getByLabel('De:')).toHaveValue('');
