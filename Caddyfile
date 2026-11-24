@@ -1,0 +1,15 @@
+# Entrelinhas — borda TLS e proxy reverso.
+#
+# Com ENTRELINHAS_DOMAIN=localhost, o Caddy emite um certificado interno (CA
+# local): não há ACME para nomes locais. Instale a CA do Caddy no cliente para
+# não precisar de `curl -k`.
+#
+# Com um domínio real, aponte o DNS para este host e mantenha as portas 80 e 443
+# abertas: o Caddy solicita e renova o certificado via ACME automaticamente.
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	# Os headers de segurança são enviados pelo Helmet no Express.
+	# A API e o build do frontend são servidos pelo mesmo processo Express.
+	reverse_proxy app:3001
+}

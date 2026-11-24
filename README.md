@@ -156,6 +156,10 @@ npm run typecheck
 
 Durante o desenvolvimento, use `npm test` para executar os testes em modo watch. O `npm run ci` não inclui os testes E2E; execute `npm run test:e2e` separadamente (o GitHub Actions faz isso).
 
+## Deploy
+
+O deploy de produção usa Docker Compose: o Caddy termina o TLS na borda e o backend não expõe a porta `3001`. Copie `.env.example` para `.env`, gere o `TOKEN_HMAC_SECRET`, ajuste `ENTRELINHAS_DOMAIN`/`PUBLIC_APP_URL` e rode `docker compose up -d --build`. HTTPS é obrigatório por causa do cookie `__Host-`; veja o [guia completo](docs/deployment.md).
+
 ## Variáveis de ambiente
 
 | Variável | Padrão | Descrição |

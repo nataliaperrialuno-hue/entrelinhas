@@ -1,0 +1,47 @@
+# Deploy de produção do Entrelinhas.
+# O backend NÃO publica a porta 3001 na host: todo o tráfego entra pelo Caddy.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    # Sobrescreve o NODE_ENV=development que vem do .env.example.
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+    volumes:
+      - entrelinhas-data:/app/backend/data
+    # Espelha o healthcheck da imagem; o Caddy só sobe quando a API responde.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${ENTRELINHAS_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  entrelinhas-data:
+  caddy-data:
+  caddy-config:
