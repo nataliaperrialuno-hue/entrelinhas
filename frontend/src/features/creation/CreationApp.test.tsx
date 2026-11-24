@@ -179,11 +179,11 @@ describe('CreationApp', () => {
     expect(screen.getByLabelText('Prazo de leitura')).toHaveValue('600');
 
     fireEvent.click(screen.getByLabelText('Apagar palavras durante a leitura'));
-    fireEvent.change(screen.getByLabelText('Prazo de leitura'), { target: { value: '1800' } });
+    fireEvent.change(screen.getByLabelText('Prazo de leitura'), { target: { value: '3600' } });
     await submitValidLetter();
 
     expect(lastDraft().fadeEnabled).toBe(false);
-    expect(lastDraft().readTimeLimitSeconds).toBe(1800);
+    expect(lastDraft().readTimeLimitSeconds).toBe(3600);
   });
 
   it('faz upload pelo seletor de arquivo e mostra prévia antes de salvar', async () => {

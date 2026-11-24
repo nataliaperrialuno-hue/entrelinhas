@@ -38,6 +38,7 @@ const READ_TIME_OPTIONS = [
   { seconds: 600, label: '10 minutos' },
   { seconds: 900, label: '15 minutos' },
   { seconds: 1800, label: '30 minutos' },
+  { seconds: 3600, label: '60 minutos' },
 ] as const;
 
 function validateDraft(title: string, message: string): string | null {
