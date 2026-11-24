@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Cartas digitais com leitura única e apagamento progressivo",
+  "type": "module",
   "workspaces": ["frontend", "backend"],
   "engines": { "node": ">=22.12.0" },
   "scripts": {
@@ -23,6 +24,10 @@
     "concurrently": "^9.2.1",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.0"
+    "typescript-eslint": "^8.46.0",
+    "vite": "7.3.8"
+  },
+  "overrides": {
+    "vite": "7.3.8"
   }
 }

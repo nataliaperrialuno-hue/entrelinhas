@@ -8,7 +8,6 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001',
       '/c': 'http://localhost:3001',
-      '/leitura': 'http://localhost:3001',
     },
   },
   test: {
