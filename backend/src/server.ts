@@ -8,7 +8,9 @@ import { createDb } from './db/client';
 import { expireStale } from './modules/reading/service';
 
 const config = loadConfig();
-const backendRoot = dirname(fileURLToPath(import.meta.url));
+// Este arquivo está em backend/src: a raiz do backend é um nível acima.
+// Isso corrige tanto dataDir quanto frontendDist.
+const backendRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const dataDir = join(backendRoot, 'data');
 
 mkdirSync(dataDir, { recursive: true });
