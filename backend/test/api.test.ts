@@ -216,6 +216,32 @@ describe('API de cartas', () => {
     expect((await request(app).post('/api/letters').send(extra)).status).toBe(400);
   });
 
+  it('aceita carta com exatamente 6000 palavras', async () => {
+    const message = Array.from({ length: 6000 }, (_, i) => `palavra${i}`).join(' ');
+    expect(message.length).toBeLessThan(100_000);
+    expect(Buffer.byteLength(message, 'utf8')).toBeLessThan(512 * 1024);
+
+    const creation = await request(app)
+      .post('/api/letters')
+      .send({ ...validDraft(), message });
+
+    expect(creation.status).toBe(201);
+  });
+
+  it('rejeita carta com 6001 palavras com 400', async () => {
+    const message = Array.from({ length: 6001 }, (_, i) => `palavra${i}`).join(' ');
+    expect(message.length).toBeLessThan(100_000);
+    expect(Buffer.byteLength(message, 'utf8')).toBeLessThan(512 * 1024);
+
+    const creation = await request(app)
+      .post('/api/letters')
+      .send({ ...validDraft(), message });
+
+    expect(creation.status).toBe(400);
+    // Erro genérico é contrato estável; o limite é explicado pela validação local do frontend.
+    expect(creation.body).toEqual({ error: 'Dados inválidos.' });
+  });
+
   it('marca remetente anônimo e não devolve o nome', async () => {
     const anonymous = { ...validDraft(), senderName: 'Ana', senderAnonymous: true };
     const creation = await request(app).post('/api/letters').send(anonymous);

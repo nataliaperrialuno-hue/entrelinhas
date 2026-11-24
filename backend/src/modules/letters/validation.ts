@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-// Limite de 4000 palavras; teto de caracteres evita abuso no tamanho do corpo.
-export const MAX_LETTER_WORDS = 4000;
+// Limite de 6000 palavras; teto de caracteres evita abuso no tamanho do corpo.
+export const MAX_LETTER_WORDS = 6000;
 export const MAX_LETTER_CHARS = 100000;
 export const MAX_PHOTOS = 3;
 export const MAX_SEAL_ASSETS = 1;

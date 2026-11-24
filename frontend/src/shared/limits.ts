@@ -1,5 +1,5 @@
 /** Limite compartilhado de palavras por carta. */
-export const MAX_LETTER_WORDS = 4000;
+export const MAX_LETTER_WORDS = 6000;
 /** Teto de segurança em caracteres (inclui marcadores de formatação). */
 export const MAX_LETTER_CHARS = 100000;
 /** Número máximo de fotos por carta. */

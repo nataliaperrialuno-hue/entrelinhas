@@ -53,7 +53,7 @@ describe('dwellForWords', () => {
   it('limita o dwell a 6 s para que cartas longas possam concluir', () => {
     expect(dwellForWords(100)).toBe(6000);
     expect(dwellForWords(134)).toBe(6000);
-    expect(dwellForWords(4000)).toBe(6000);
+    expect(dwellForWords(6000)).toBe(6000);
   });
 });
 
