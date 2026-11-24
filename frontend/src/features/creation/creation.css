@@ -1,6 +1,10 @@
 .creation-page {
+  --creation-gutter: clamp(1rem, 4vw, 3rem);
+  --creation-bar-height: 4rem; /* botão ~2.5rem + 2×0.4rem + 2×1px borda + folga */
   min-height: 100dvh;
-  padding: clamp(1rem, 4vw, 3rem);
+  padding: calc(var(--creation-gutter) + var(--creation-bar-height))
+           var(--creation-gutter)
+           var(--creation-gutter);
 }
 
 .creation-shell {
@@ -8,16 +12,17 @@
   margin: 0 auto;
 }
 
-/* Menu lateral: nav sticky; barra acima do overlay; drawer e overlay são irmãos da barra. */
+/* Menu lateral: nav relative; barra acima do overlay; drawer e overlay são irmãos da barra. */
 .creation-menu {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 40;
   margin-bottom: clamp(1rem, 2.5vw, 1.75rem);
 }
 
 .creation-menu__bar {
-  position: relative;
+  position: fixed;
+  top: var(--creation-gutter);
+  right: var(--creation-gutter);
   z-index: 60;
   display: flex;
   flex-wrap: wrap;
@@ -631,7 +636,7 @@ textarea:focus-visible {
 
 @media (max-width: 560px) {
   .creation-page {
-    padding: 1rem;
+    --creation-gutter: 1rem;
   }
 
   .theme-options {
