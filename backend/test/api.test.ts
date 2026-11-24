@@ -429,6 +429,124 @@ describe('claim e sessão de leitura', () => {
     expect(resumed.headers['set-cookie']).toBeUndefined();
   });
 
+  it('abre carta nova com cookie de outra carta e emite cookie novo', async () => {
+    const firstToken = await createLetter(app);
+    const firstClaim = await request(app).get(`/c/${firstToken}`);
+    expect(firstClaim.status).toBe(302);
+    const firstCookie = cookiePairFrom(firstClaim);
+    const firstSessionId = sessionIdFrom(firstClaim);
+
+    const creation = await request(app)
+      .post('/api/letters')
+      .send({ ...validDraft(), title: 'Carta B', message: 'Conteúdo exclusivo da carta B.' });
+    expect(creation.status).toBe(201);
+    const secondToken = (creation.body.url as string).slice('/c/'.length);
+
+    const secondClaim = await request(app)
+      .get(`/c/${secondToken}`)
+      .set('Cookie', firstCookie);
+
+    expect(secondClaim.status).toBe(302);
+    expect(secondClaim.headers['set-cookie']).toBeDefined();
+
+    const secondCookie = cookiePairFrom(secondClaim);
+    const secondSessionId = sessionIdFrom(secondClaim);
+    expect(secondSessionId).not.toBe(firstSessionId);
+    expect(rawTokenFrom(secondCookie)).not.toBe(rawTokenFrom(firstCookie));
+
+    const state = await request(app)
+      .get(`/api/read/${secondSessionId}/state`)
+      .set('Cookie', secondCookie);
+    expect(state.status).toBe(200);
+
+    const opened = await request(app)
+      .post(`/api/read/${secondSessionId}/open`)
+      .set('Cookie', secondCookie);
+    expect(opened.status).toBe(200);
+    expect(opened.body.title).toBe('Carta B');
+    expect(opened.body.message).toBe('Conteúdo exclusivo da carta B.');
+  });
+
+  it('cookie de carta concluída não bloqueia a abertura de carta nova', async () => {
+    const firstToken = await createLetter(app);
+    const firstClaim = await request(app).get(`/c/${firstToken}`);
+    const firstCookie = cookiePairFrom(firstClaim);
+    const firstSessionId = sessionIdFrom(firstClaim);
+
+    await request(app).post(`/api/read/${firstSessionId}/open`).set('Cookie', firstCookie);
+    const completed = await request(app)
+      .post(`/api/read/${firstSessionId}/complete`)
+      .set('Cookie', firstCookie)
+      .set('Idempotency-Key', `${firstSessionId}:complete`);
+    expect(completed.status).toBe(200);
+
+    const secondToken = await createLetter(app);
+    const secondClaim = await request(app)
+      .get(`/c/${secondToken}`)
+      .set('Cookie', firstCookie);
+
+    expect(secondClaim.status).toBe(302);
+    expect(secondClaim.headers['set-cookie']).toBeDefined();
+
+    const secondCookie = cookiePairFrom(secondClaim);
+    const secondSessionId = sessionIdFrom(secondClaim);
+    expect(secondSessionId).not.toBe(firstSessionId);
+
+    const opened = await request(app)
+      .post(`/api/read/${secondSessionId}/open`)
+      .set('Cookie', secondCookie);
+    expect(opened.status).toBe(200);
+    expect(opened.body.message).toBe(validDraft().message);
+  });
+
+  it('mantém 410 no link da carta concluída mesmo quando seu cookie é apresentado', async () => {
+    const token = await createLetter(app);
+    const claim = await request(app).get(`/c/${token}`);
+    const cookie = cookiePairFrom(claim);
+    const sessionId = sessionIdFrom(claim);
+
+    await request(app).post(`/api/read/${sessionId}/open`).set('Cookie', cookie);
+    const completed = await request(app)
+      .post(`/api/read/${sessionId}/complete`)
+      .set('Cookie', cookie)
+      .set('Idempotency-Key', `${sessionId}:complete`);
+    expect(completed.status).toBe(200);
+
+    const replay = await request(app).get(`/c/${token}`).set('Cookie', cookie);
+    expect(replay.status).toBe(410);
+    expect(replay.body).toEqual({ error: 'Esta carta não está mais disponível.' });
+    expect(replay.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('cookie antigo não autoriza /open da sessão da carta nova', async () => {
+    const firstToken = await createLetter(app);
+    const firstClaim = await request(app).get(`/c/${firstToken}`);
+    const firstCookie = cookiePairFrom(firstClaim);
+
+    const secondToken = await createLetter(app);
+    const secondClaim = await request(app)
+      .get(`/c/${secondToken}`)
+      .set('Cookie', firstCookie);
+    expect(secondClaim.status).toBe(302);
+
+    const forbidden = await request(app)
+      .post(`/api/read/${sessionIdFrom(secondClaim)}/open`)
+      .set('Cookie', firstCookie);
+    expect(forbidden.status).toBe(403);
+    expect(JSON.stringify(forbidden.body)).not.toContain(validDraft().message);
+  });
+
+  it('cookie órfão não bloqueia o claim de carta nova', async () => {
+    const token = await createLetter(app);
+    const orphanCookie = `entrelinhas_read=${generateToken()}`;
+
+    const claim = await request(app).get(`/c/${token}`).set('Cookie', orphanCookie);
+
+    expect(claim.status).toBe(302);
+    expect(claim.headers['set-cookie']).toBeDefined();
+    expect(rawTokenFrom(cookiePairFrom(claim))).not.toBe(rawTokenFrom(orphanCookie));
+  });
+
   it('retoma sem cookie dentro da carência, preserva progresso e invalida o link', async () => {
     const token = await createLetter(app);
     const first = await request(app).get(`/c/${token}`);

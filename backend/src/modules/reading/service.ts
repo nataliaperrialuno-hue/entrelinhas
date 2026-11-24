@@ -188,31 +188,35 @@ export function claimReading(
         ? undefined
         : findSessionById(db, letter.current_session_id);
 
-    // Portador do cookie válido retoma a mesma sessão, sem emitir novo cookie.
-    // Um cookie inválido/antigo NUNCA autoriza retomar a sessão atual.
+    // Retomada silenciosa apenas para o cookie que corresponde exatamente à
+    // sessão atual desta carta. Qualquer outro cookie (de outra carta, de
+    // sessão antiga/invalidada/expirada ou órfão) é ignorado: o fluxo normal
+    // decide entre claim/resume e a rota emite um novo readerToken.
     if (cookieToken !== null) {
       const cookieHash = hashToken(cookieToken, config.tokenHmacSecret);
       const cookieSession = findSessionByTokenHash(db, cookieHash);
+      const isCurrentSession =
+        cookieSession !== undefined &&
+        (current !== undefined
+          ? current.id === cookieSession.id
+          : letter.current_session_id === cookieSession.id);
 
       if (
-        cookieSession === undefined ||
-        cookieSession.letter_id !== letter.id ||
-        !isSessionActive(cookieSession.state) ||
-        (current !== undefined && current.id !== cookieSession.id) ||
-        (current === undefined && letter.current_session_id !== cookieSession.id)
+        cookieSession !== undefined &&
+        cookieSession.letter_id === letter.id &&
+        isSessionActive(cookieSession.state) &&
+        isCurrentSession
       ) {
-        return null;
-      }
+        if (enforceReadingDeadline(db, cookieSession, letter, config, now)) {
+          return null;
+        }
 
-      if (enforceReadingDeadline(db, cookieSession, letter, config, now)) {
-        return null;
+        return {
+          sessionId: cookieSession.id,
+          location: `/leitura/${cookieSession.id}`,
+          readerToken: null,
+        };
       }
-
-      return {
-        sessionId: cookieSession.id,
-        location: `/leitura/${cookieSession.id}`,
-        readerToken: null,
-      };
     }
 
     if (
