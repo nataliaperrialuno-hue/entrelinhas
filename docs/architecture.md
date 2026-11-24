@@ -1,0 +1,68 @@
+# Arquitetura
+
+Este documento descreve a estrutura em camadas do Entrelinhas, o fluxo de uma requisição, a fronteira de confiança entre cliente e servidor e as decisões de performance da leitura. O comportamento aqui é o contrato alvo; detalhes de módulos ainda em implementação podem evoluir.
+
+## Visão geral em camadas
+
+| Camada | Responsabilidade | Localização |
+| --- | --- | --- |
+| Apresentação | Formulário de criação, prévia e experiência de leitura; roteamento por `pathname` | `frontend/src/features`, `frontend/src/App.tsx` |
+| Cliente HTTP | Chamadas tipadas a `/api/*`, com `credentials: same-origin` e tratamento de `ApiError` | `frontend/src/lib/api.ts` |
+| Borda HTTP | Express 5, Helmet, JSON limitado a 32 kb, limitação de taxa e redirecionamento do link curto | `backend/src/app.ts` |
+| Domínio | Regras de criação, emissão de tokens, claim de sessão, progresso e conclusão | `backend/src/modules` (em implementação) |
+| Persistência | SQLite via `node:sqlite`, migrações e transações atômicas | `backend/src/db` |
+
+O frontend nunca acessa o banco. O backend é a única autoridade sobre estado de carta, estado de sessão e progresso.
+
+## Fluxo request/response
+
+```mermaid
+sequenceDiagram
+    participant L as Leitor
+    participant P as Proxy (Vite) ou Express
+    participant A as API Express
+    participant D as SQLite
+
+    L->>P: GET /c/linkToken
+    P->>A: Encaminha a abertura do link
+    A->>D: Transação atômica de claim
+    D-->>A: Sessão criada ou link já usado
+    A-->>L: 302 /leitura/sessionId + Set-Cookie HttpOnly
+    L->>A: GET /api/read/sessionId/state
+    A-->>L: { state, progress }
+    L->>A: POST /api/read/sessionId/open
+    A-->>L: LetterView
+    L->>A: POST /progress e POST /complete
+    A->>D: Atualiza progresso e conclui
+    A-->>L: { progress } e { state: completed }
+```
+
+Em desenvolvimento, o Vite (`5173`) encaminha `/api`, `/c` e `/leitura` para a API (`3001`). Em produção, o próprio Express pode servir o build do frontend. Os contratos completos — incluindo códigos de status — estão em [`api.md`](api.md).
+
+## Fronteira de confiança
+
+- **O cliente nunca é autoridade de progresso.** O navegador envia amostras de rolagem; o servidor valida a sequência, persiste `last_progress` e decide quando a leitura foi concluída. Um progresso forjado não libera estados nem apaga a carta antecipadamente.
+- **O link não é credencial permanente.** A abertura consome o link (uso único) e estabelece uma sessão com cookie `HttpOnly`. A segunda abertura recebe `409`/`410`.
+- **Sessão ativa por `epoch`.** Uma nova sessão incrementa o `epoch` e invalida a anterior; apenas a sessão ativa tem permissão para enviar progresso e conclusão.
+- **Heartbeat e carência.** `HEARTBEAT_TTL_SECONDS` define a validade da presença da sessão; `SESSION_GRACE_MINUTES` limita a retomada única após interrupção. Depois da janela, a sessão expira. Ver [`decisions/0002-sessao-interrompida.md`](decisions/0002-sessao-interrompida.md).
+- **Conclusão idempotente.** `POST /complete` aceita `Idempotency-Key`; repetições não produzem efeitos adicionais.
+- **Conteúdo confiável, mas não confiável como HTML.** A mensagem da carta é texto: deve ser renderizada como texto, nunca injetada como markup.
+
+## Decisões de performance
+
+- **`requestAnimationFrame` (rAF):** a amostragem de posição de rolagem é feita por frame, evitando cálculos a cada evento de `scroll`.
+- **`IntersectionObserver` como gate:** observa quais blocos estão visíveis para limitar o trabalho de renderização; não é a fonte autoritativa de progresso.
+- **Dwell mínimo:** um bloco só é apagado após permanecer na linha de leitura por `max(400 ms, palavras × 30 ms)`, evitando que o texto desapareça antes da leitura.
+- **Linha de leitura a 70% da viewport:** referência visual estável para considerar um trecho "lido", em vez de usar o topo da tela.
+- **`100dvh`:** altura dinâmica da viewport em dispositivos móveis, reduzindo saltos causados por barras de navegador.
+- **CSS scroll-driven:** usado apenas para realce visual sob `@supports`, com fallback em JavaScript; animações são desligadas com `prefers-reduced-motion`.
+
+A fundamentação completa está em [`decisions/0003-apagamento-progressivo.md`](decisions/0003-apagamento-progressivo.md).
+
+## Índice de decisões (ADRs)
+
+| ADR | Assunto |
+| --- | --- |
+| [0001 — Token e hash](decisions/0001-token-e-hash.md) | Geração de token de 256 bits, HMAC-SHA256, dois tokens e cookie versus URL |
+| [0002 — Sessão interrompida](decisions/0002-sessao-interrompida.md) | Política híbrida de retomada com janela de carência de 10 minutos |
+| [0003 — Apagamento progressivo](decisions/0003-apagamento-progressivo.md) | rAF, linha de leitura, dwell, IntersectionObserver e compatibilidade com iOS Safari |
