@@ -1,0 +1,70 @@
+.letter-sheet {
+  max-width: 68ch;
+  margin: clamp(1.5rem, 5vw, 4rem) auto;
+  padding: clamp(1.75rem, 5vw, 3.5rem);
+  line-height: 1.8;
+  background: var(--paper-bg);
+  color: var(--ink);
+  box-shadow: var(--paper-shadow);
+  border-radius: 14px;
+  font-family: var(--font-letter);
+}
+
+.letter-sheet__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.letter-sheet__sender,
+.letter-sheet__recipient {
+  margin: 0;
+}
+
+.letter-sheet__title {
+  margin: 1.5rem 0 2rem;
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.25;
+}
+
+.letter-sheet__body {
+  display: grid;
+  gap: 1.25rem;
+}
+
+/*
+ * O apagamento é controlado por --read-progress, aplicado pelo módulo de leitura
+ * em cada bloco (a propriedade é registrada com inherits: false em tokens.css).
+ */
+.letter-sheet__paragraph {
+  margin: 0;
+  opacity: calc(1 - var(--read-progress, 0));
+  filter: blur(calc(var(--read-progress, 0) * 3px));
+  will-change: opacity, filter;
+  transition:
+    opacity 180ms linear,
+    filter 180ms linear;
+}
+
+.letter-sheet__signature {
+  margin-top: 2rem;
+  text-align: right;
+  font-style: italic;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .letter-sheet__paragraph {
+    filter: none;
+    transition: none;
+  }
+}
+
+.letter-scroll {
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

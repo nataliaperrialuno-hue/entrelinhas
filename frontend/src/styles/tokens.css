@@ -1,0 +1,98 @@
+@property --read-progress {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+:root {
+  /* Paletas: fundo, tinta e cor de destaque */
+  --sepia-bg: #f6efe3;
+  --sepia-ink: #3a2e24;
+  --sepia-accent: #8a5a3b;
+
+  --rose-bg: #f8eef0;
+  --rose-ink: #432b33;
+  --rose-accent: #9c4f66;
+
+  --night-bg: #1f2733;
+  --night-ink: #ece7dc;
+  --night-accent: #c9ac78;
+
+  --sage-bg: #eef2e8;
+  --sage-ink: #2d3a30;
+  --sage-accent: #587460;
+
+  /* Tipografias com stacks de fontes amplamente disponíveis */
+  --font-serif: Georgia, 'Times New Roman', 'Noto Serif', serif;
+  --font-hand: 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+
+  /* Texturas de papel */
+  --paper-linen-bg: #fbf6ec;
+  --paper-linen-shadow: 0 18px 48px rgba(58, 46, 36, 0.14),
+    inset 0 0 0 1px rgba(58, 46, 36, 0.08);
+  --paper-plain-bg: #fffefa;
+  --paper-plain-shadow: 0 12px 32px rgba(35, 30, 24, 0.1);
+  --paper-aged-bg: #efe3cb;
+  --paper-aged-shadow: 0 20px 50px rgba(58, 46, 36, 0.2),
+    inset 0 0 48px rgba(120, 88, 50, 0.12);
+
+  /* Valores padrão */
+  --palette-bg: var(--sepia-bg);
+  --ink: var(--sepia-ink);
+  --accent: var(--sepia-accent);
+  --paper-bg: var(--paper-linen-bg);
+  --paper-shadow: var(--paper-linen-shadow);
+  --font-letter: var(--font-serif);
+}
+
+.theme-palette-sepia {
+  --palette-bg: var(--sepia-bg);
+  --ink: var(--sepia-ink);
+  --accent: var(--sepia-accent);
+}
+
+.theme-palette-rose {
+  --palette-bg: var(--rose-bg);
+  --ink: var(--rose-ink);
+  --accent: var(--rose-accent);
+}
+
+.theme-palette-night {
+  --palette-bg: var(--night-bg);
+  --ink: var(--night-ink);
+  --accent: var(--night-accent);
+}
+
+.theme-palette-sage {
+  --palette-bg: var(--sage-bg);
+  --ink: var(--sage-ink);
+  --accent: var(--sage-accent);
+}
+
+.theme-type-serif {
+  --font-letter: var(--font-serif);
+}
+
+.theme-type-hand {
+  --font-letter: var(--font-hand);
+}
+
+.theme-type-mono {
+  --font-letter: var(--font-mono);
+}
+
+.theme-paper-linen {
+  --paper-bg: color-mix(in srgb, var(--palette-bg) 88%, var(--paper-linen-bg));
+  --paper-shadow: var(--paper-linen-shadow);
+}
+
+.theme-paper-plain {
+  --paper-bg: color-mix(in srgb, var(--palette-bg) 96%, var(--paper-plain-bg));
+  --paper-shadow: var(--paper-plain-shadow);
+}
+
+.theme-paper-aged {
+  --paper-bg: color-mix(in srgb, var(--palette-bg) 78%, var(--paper-aged-bg));
+  --paper-shadow: var(--paper-aged-shadow);
+}
