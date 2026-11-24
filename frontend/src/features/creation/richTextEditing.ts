@@ -42,3 +42,25 @@ export function wrapSelection(
     selectionEnd: safeStart + open.length + inner.length,
   };
 }
+
+/**
+ * Insere um token (ex.: `[[foto:<id>]]`) no caret, substituindo a seleção.
+ * O caret resultante fica logo após o token inserido. Índices fora do intervalo
+ * são normalizados para não corromper o texto.
+ */
+export function insertToken(
+  text: string,
+  start: number,
+  end: number,
+  token: string,
+): WrapSelectionResult {
+  const safeStart = Math.max(0, Math.min(start, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+  const caret = safeStart + token.length;
+
+  return {
+    value: text.slice(0, safeStart) + token + text.slice(safeEnd),
+    selectionStart: caret,
+    selectionEnd: caret,
+  };
+}

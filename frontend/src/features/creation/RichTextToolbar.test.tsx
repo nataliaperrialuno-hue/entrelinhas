@@ -2,10 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { RichTextToolbar } from './RichTextToolbar';
 
+function mount(onApply = vi.fn(), onInsertPhoto = vi.fn()) {
+  render(<RichTextToolbar onApply={onApply} onInsertPhoto={onInsertPhoto} />);
+  return { onApply, onInsertPhoto };
+}
+
 describe('RichTextToolbar', () => {
   it('aplica negrito, itálico e sublinhado', () => {
-    const onApply = vi.fn();
-    render(<RichTextToolbar onApply={onApply} />);
+    const { onApply } = mount();
 
     fireEvent.click(screen.getByRole('button', { name: 'Negrito (Ctrl+B)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Itálico (Ctrl+I)' }));
@@ -17,8 +21,7 @@ describe('RichTextToolbar', () => {
   });
 
   it('oferece as cores da carta para o trecho selecionado', () => {
-    const onApply = vi.fn();
-    render(<RichTextToolbar onApply={onApply} />);
+    const { onApply } = mount();
 
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar cor Vinho ao trecho' }));
 
@@ -26,8 +29,7 @@ describe('RichTextToolbar', () => {
   });
 
   it('oferece fonte e tamanho com valores da whitelist', () => {
-    const onApply = vi.fn();
-    render(<RichTextToolbar onApply={onApply} />);
+    const { onApply } = mount();
 
     fireEvent.click(screen.getByText('Manuscrita'));
     fireEvent.click(screen.getByText('Maior'));
@@ -44,5 +46,14 @@ describe('RichTextToolbar', () => {
       '[[/tamanho]]',
       'texto redimensionado',
     );
+  });
+
+  it('oferece o botão Foto sem disparar formatação de texto', () => {
+    const { onApply, onInsertPhoto } = mount();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inserir foto' }));
+
+    expect(onInsertPhoto).toHaveBeenCalledTimes(1);
+    expect(onApply).not.toHaveBeenCalled();
   });
 });

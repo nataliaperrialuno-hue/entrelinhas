@@ -8,6 +8,7 @@ const HEARTBEAT_MS = 1500;
 const COMPLETION_DWELL_MS = 1000;
 const BLOCK_SELECTOR = '[data-letter-block]';
 const SENTINEL_SELECTOR = '[data-reading-sentinel]';
+const NAVIGATION_KEYS = new Set(['PageDown', 'ArrowDown', 'End', ' ', 'Space', 'Spacebar']);
 
 export interface UseFadeOnScrollOptions {
   scrollerRef: RefObject<HTMLDivElement | null>;
@@ -15,6 +16,8 @@ export interface UseFadeOnScrollOptions {
   enabled: boolean;
   sessionId: string;
   savedProgress: number;
+  /** Quando false, a contabilidade continua, mas nenhuma palavra some durante a leitura. */
+  fadeEnabled?: boolean;
   onProgress: (progress: number) => void;
   onComplete: () => void;
 }
@@ -39,6 +42,10 @@ function isAdvancePaused(): boolean {
  * `--read-progress` escrita diretamente em cada bloco. O IntersectionObserver
  * funciona apenas como gate de atividade; toda a geometria vem de
  * `getBoundingClientRect`.
+ *
+ * O gate de interação impede que uma carta curta seja apagada (ou concluída)
+ * apenas pela geometria do mount: scroll/wheel/touchmove/keydown de navegação
+ * liberam os efeitos visuais.
  */
 export function useFadeOnScroll({
   scrollerRef,
@@ -46,6 +53,7 @@ export function useFadeOnScroll({
   enabled,
   sessionId,
   savedProgress,
+  fadeEnabled = true,
   onProgress,
   onComplete,
 }: UseFadeOnScrollOptions): void {
@@ -83,6 +91,7 @@ export function useFadeOnScroll({
     let frameUsesTimeout = false;
     let gateActive = true;
     let sentinelVisible = false;
+    let interacted = false;
     let lastBlockSeen = 0;
     let lastSentProgress = maxSeenRef.current;
     // O primeiro avanço deve ser reportado imediatamente; o throttle de 1500 ms vale só para os seguintes.
@@ -101,14 +110,25 @@ export function useFadeOnScroll({
       blockSeen.set(element, 1);
     }
 
-    // Restauração imediata: um reload nunca devolve texto já lido.
+    function eraseAll(): void {
+      for (const [element, timer] of dwellTimers) {
+        clearTimeout(timer);
+        dwellTimers.delete(element);
+      }
+      for (const element of blocks) eraseBlock(element);
+    }
+
+    // Restauração imediata: um reload nunca devolve texto já lido quando o apagamento está ligado.
     for (const [index, element] of blocks.entries()) {
       originalText.set(element, element.textContent ?? '');
       originalHeight.set(element, element.getBoundingClientRect().height);
       const restored = clamp(maxSeenRef.current * blocks.length - index);
       blockSeen.set(element, restored);
-      element.style.setProperty('--read-progress', restored.toFixed(3));
-      if (restored >= 1) eraseBlock(element);
+      if (fadeEnabled) {
+        // Valor neutro não precisa ser escrito: o gate de interação permanece intacto.
+        if (restored > 0) element.style.setProperty('--read-progress', restored.toFixed(3));
+        if (restored >= 1) eraseBlock(element);
+      }
     }
 
     const lastBlock = blocks.at(-1);
@@ -138,6 +158,7 @@ export function useFadeOnScroll({
       });
       if (!canFinish || isAdvancePaused()) return;
       completedRef.current = true;
+      eraseAll();
       onCompleteRef.current();
     }
 
@@ -153,6 +174,21 @@ export function useFadeOnScroll({
       frameId = frameUsesTimeout ? window.setTimeout(run, 16) : window.requestAnimationFrame(run);
     }
 
+    function markInteracted(): void {
+      if (interacted) return;
+      interacted = true;
+      scheduleFrame();
+    }
+
+    function handleScroll(): void {
+      markInteracted();
+      scheduleFrame();
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (NAVIGATION_KEYS.has(event.key)) markInteracted();
+    }
+
     function measure(): void {
       if (disposed || !gateActive) return;
 
@@ -160,6 +196,7 @@ export function useFadeOnScroll({
       const lineY = scrollerRect.top + scrollerRect.height * READING_LINE_RATIO;
       const fadeSpan = Math.max(1, scrollerRect.height * FADE_SPAN_RATIO);
       const paused = isAdvancePaused();
+      const canFade = fadeEnabled && interacted;
       let total = 0;
 
       for (const element of blocks) {
@@ -185,10 +222,10 @@ export function useFadeOnScroll({
 
         const next = mergeProgress(previous, blockProgress(lineY, fadeSpan, rect.bottom));
         blockSeen.set(element, next);
-        element.style.setProperty('--read-progress', next.toFixed(3));
+        if (canFade) element.style.setProperty('--read-progress', next.toFixed(3));
         total += next;
 
-        if (rect.bottom <= lineY && !dwellTimers.has(element)) {
+        if (canFade && rect.bottom <= lineY && !dwellTimers.has(element)) {
           const dwellMs = dwellForWords(countWords(originalText.get(element) ?? element.textContent ?? ''));
           const dwellTimer = setTimeout(() => {
             dwellTimers.delete(element);
@@ -219,6 +256,7 @@ export function useFadeOnScroll({
 
       lastBlockSeen = lastBlock !== undefined ? (blockSeen.get(lastBlock) ?? 0) : 0;
       const ready =
+        interacted &&
         !paused &&
         sentinelVisible &&
         maxSeenRef.current >= 0.98 &&
@@ -298,7 +336,10 @@ export function useFadeOnScroll({
       });
     }
 
-    scrollerElement.addEventListener('scroll', scheduleFrame, { passive: true });
+    scrollerElement.addEventListener('scroll', handleScroll, { passive: true });
+    scrollerElement.addEventListener('wheel', markInteracted, { passive: true });
+    scrollerElement.addEventListener('touchmove', markInteracted, { passive: true });
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('visibilitychange', handleVisibility);
     scheduleFrame();
 
@@ -310,8 +351,11 @@ export function useFadeOnScroll({
       resizeObserver?.disconnect();
       for (const timer of dwellTimers.values()) clearTimeout(timer);
       dwellTimers.clear();
-      scrollerElement.removeEventListener('scroll', scheduleFrame);
+      scrollerElement.removeEventListener('scroll', handleScroll);
+      scrollerElement.removeEventListener('wheel', markInteracted);
+      scrollerElement.removeEventListener('touchmove', markInteracted);
+      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [enabled, savedProgress, sessionId, scrollerRef, sheetRef]);
+  }, [enabled, fadeEnabled, savedProgress, sessionId, scrollerRef, sheetRef]);
 }

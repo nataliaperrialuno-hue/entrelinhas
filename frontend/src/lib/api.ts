@@ -1,4 +1,5 @@
 import type {
+  AssetUploadResult,
   CreateLetterResponse,
   LetterDraft,
   LetterView,
@@ -15,6 +16,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Converte uma resposta não-OK em ApiError, preservando `error` do servidor. */
+async function throwApiError(response: Response): Promise<never> {
+  let message = `Requisição falhou com status ${response.status}`;
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    if (typeof payload?.error === 'string' && payload.error.length > 0) {
+      message = payload.error;
+    }
+  } catch {
+    // Resposta sem corpo JSON: manter a mensagem padrão baseada no status.
+  }
+  throw new ApiError(response.status, message);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body !== undefined;
   const headers: Record<string, string> = {
@@ -28,18 +43,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
   });
 
-  if (!response.ok) {
-    let message = `Requisição falhou com status ${response.status}`;
-    try {
-      const payload = (await response.json()) as { error?: unknown };
-      if (typeof payload?.error === 'string' && payload.error.length > 0) {
-        message = payload.error;
-      }
-    } catch {
-      // Resposta sem corpo JSON: manter a mensagem padrão baseada no status.
-    }
-    throw new ApiError(response.status, message);
-  }
+  if (!response.ok) await throwApiError(response);
 
   return response.json() as Promise<T>;
 }
@@ -78,4 +82,36 @@ export function completeReading(sessionId: string): Promise<{ state: 'completed'
     method: 'POST',
     headers: { 'Idempotency-Key': `${sessionId}:complete` },
   });
+}
+
+/**
+ * Envia o arquivo cru, sem o JSON de `request()`. O tipo vem do próprio File;
+ * o servidor valida MIME/tamanho e é a autoridade final.
+ */
+export function uploadAsset(file: File, kind: 'photo' | 'seal'): Promise<AssetUploadResult> {
+  return fetch('/api/assets', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-asset-kind': kind,
+    },
+    body: file,
+  }).then(async (response) => {
+    if (!response.ok) await throwApiError(response);
+    return response.json() as Promise<AssetUploadResult>;
+  });
+}
+
+export function heartbeatReading(sessionId: string): Promise<{
+  state: string;
+  progress: number;
+  readDeadlineAt: number | null;
+  idleDeadlineAt: number | null;
+}> {
+  return request(readingPath(sessionId, 'heartbeat'), { method: 'POST' });
+}
+
+export function assetUrl(id: string): string {
+  return `/api/assets/${encodeURIComponent(id)}`;
 }

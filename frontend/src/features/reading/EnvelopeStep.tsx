@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AnimationEvent } from 'react';
+import { assetUrl } from '../../lib/api';
+import type { ThemeSelection } from '../../shared/types';
 
 interface EnvelopeStepProps {
   onOpen: () => void;
+  theme?: ThemeSelection;
+  sealAssetId?: string | null;
 }
 
 const OPEN_FALLBACK_MS = 900;
@@ -27,7 +31,20 @@ function WaxSeal() {
   );
 }
 
-export function EnvelopeStep({ onOpen }: EnvelopeStepProps) {
+function CustomSeal({ assetId }: { assetId: string | null }) {
+  return (
+    <span className="wax-seal wax-seal--custom" aria-hidden="true">
+      <span className="wax-seal__rim" />
+      <span className="wax-seal__face">
+        {assetId !== null ? (
+          <img className="wax-seal__image" src={assetUrl(assetId)} alt="" />
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+export function EnvelopeStep({ onOpen, theme, sealAssetId }: EnvelopeStepProps) {
   const [opening, setOpening] = useState(false);
   const openedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +80,12 @@ export function EnvelopeStep({ onOpen }: EnvelopeStepProps) {
     open();
   };
 
+  const customAssetId =
+    sealAssetId !== null && sealAssetId !== undefined && sealAssetId.length > 0
+      ? sealAssetId
+      : null;
+  const useCustomSeal = theme?.seal === 'custom' || (theme === undefined && customAssetId !== null);
+
   return (
     <main className="reading-step reading-step--envelope">
       <div className={`envelope-stage ${opening ? 'is-opening' : ''}`}>
@@ -82,7 +105,7 @@ export function EnvelopeStep({ onOpen }: EnvelopeStepProps) {
           onClick={handleClick}
           onAnimationEnd={handleAnimationEnd}
         >
-          <WaxSeal />
+          {useCustomSeal ? <CustomSeal assetId={customAssetId} /> : <WaxSeal />}
         </button>
       </div>
       <p className="envelope-step__hint">Clique no selo para abrir.</p>

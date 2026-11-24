@@ -490,6 +490,174 @@ textarea:focus-visible {
   }
 }
 
+/* Fotos: input escondido, estado de drop e mensagens acessíveis. */
+.photo-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.letter-textarea--drop {
+  border-color: var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--accent) 6%, #fffdf8);
+}
+
+.photo-error {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid #9a3b3b;
+  border-radius: 6px;
+  background: rgba(154, 59, 59, 0.08);
+  color: #7d2f2f;
+  font-size: 0.88rem;
+}
+
+.upload-note {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #5f574d;
+}
+
+.photo-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.photo-previews__item {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: center;
+  padding: 0.4rem;
+  border: 1px solid rgba(58, 46, 36, 0.16);
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.photo-previews__image {
+  display: block;
+  width: 5.5rem;
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.photo-previews__remove {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(58, 46, 36, 0.18);
+  border-radius: 20px;
+  background: #fffdf8;
+  color: #5f574d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+/* Selo em branco: canvas de desenho. */
+.seal-custom-panel {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+  padding: 0.8rem;
+  border: 1px solid rgba(58, 46, 36, 0.16);
+  border-radius: 12px;
+  background: #fffdf8;
+}
+
+.seal-canvas {
+  display: block;
+  width: min(180px, 100%);
+  height: auto;
+  border: 1px solid rgba(58, 46, 36, 0.24);
+  border-radius: 12px;
+  background: #fffdf8;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.seal-canvas__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.seal-swatch {
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 2px solid rgba(58, 46, 36, 0.18);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.seal-swatch--selected,
+.seal-size--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px #fffdf8, 0 0 0 4px var(--accent);
+}
+
+.seal-size {
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  border: 1px solid rgba(58, 46, 36, 0.18);
+  border-radius: 7px;
+  background: #fffdf8;
+  color: #2f2a24;
+  cursor: pointer;
+  font: inherit;
+}
+
+.seal-canvas__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.seal-action {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid rgba(58, 46, 36, 0.18);
+  border-radius: 20px;
+  background: #fffdf8;
+  color: #2f2a24;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.seal-action[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, #fffdf8);
+}
+
+.seal-action--primary {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.seal-preview {
+  display: block;
+  width: 3.5rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+.seal-ready {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #4f6a4f;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .theme-option,
   .btn {

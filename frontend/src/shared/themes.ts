@@ -29,6 +29,7 @@ export const SEALS = [
   { id: 'wine', label: 'Vinho', description: 'Vermelho profundo, discreto e solene.' },
   { id: 'gold', label: 'Ouro', description: 'Brilho quente e delicado.' },
   { id: 'ink', label: 'Tinta', description: 'Azul escuro de tinta de caneta.' },
+  { id: 'custom', label: 'Em branco', description: 'Desenhe um selo só seu.' },
 ] as const satisfies readonly ThemeOption<SealId>[];
 
 export const PALETTES = [

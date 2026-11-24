@@ -3,6 +3,7 @@ import { DEFAULT_INK_COLOR, LETTER_COLORS } from '../../shared/themes';
 
 interface RichTextToolbarProps {
   onApply: (open: string, close: string, placeholder: string) => void;
+  onInsertPhoto: () => void;
 }
 
 interface MarkDefinition {
@@ -68,7 +69,7 @@ function closePopover(target: EventTarget | null): void {
   }
 }
 
-export function RichTextToolbar({ onApply }: RichTextToolbarProps) {
+export function RichTextToolbar({ onApply, onInsertPhoto }: RichTextToolbarProps) {
   function apply(
     target: EventTarget | null,
     open: string,
@@ -167,6 +168,16 @@ export function RichTextToolbar({ onApply }: RichTextToolbarProps) {
           ))}
         </div>
       </details>
+
+      <button
+        className="rt-toolbar__button rt-toolbar__button--wide"
+        type="button"
+        title="Inserir foto"
+        aria-label="Inserir foto"
+        onClick={onInsertPhoto}
+      >
+        Foto
+      </button>
 
       <details className="rt-popover">
         <summary className="rt-toolbar__button" title="Tamanho do trecho">

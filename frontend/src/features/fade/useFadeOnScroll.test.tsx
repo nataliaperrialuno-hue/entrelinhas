@@ -192,11 +192,14 @@ describe('useFadeOnScroll', () => {
     expect(onProgress).toHaveBeenCalledWith(0.5);
   });
 
-  it('não apaga o bloco antes de concluído o dwell', () => {
+  it('não apaga o bloco antes de concluído o dwell após a interação', () => {
     const dom = mountDom(['primeiro bloco', 'segundo bloco']);
     renderFade(dom);
 
     act(() => observer().emit(dom.sheet, true));
+    act(() => {
+      dom.scroller.dispatchEvent(new Event('wheel'));
+    });
     flushFrames();
 
     expect(dom.blocks[0].textContent).toBe('primeiro bloco');
@@ -211,6 +214,50 @@ describe('useFadeOnScroll', () => {
     });
     expect(dom.blocks[0].textContent).toBe('');
     expect(dom.blocks[0].dataset.faded).toBe('true');
+  });
+
+  it('não apaga texto nem conclui antes da primeira interação, mesmo com sentinela visível', () => {
+    const dom = mountDom(['um dois tres']);
+    const { onProgress, onComplete } = renderFade(dom);
+
+    dom.setScrollTop(200);
+    act(() => {
+      observer().emit(dom.sheet, true);
+      observer().emit(dom.sentinel, true);
+    });
+    flushFrames();
+
+    expect(onProgress).toHaveBeenCalledWith(1);
+    expect(dom.blocks[0].textContent).toBe('um dois tres');
+    expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('');
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    flushFrames();
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(dom.blocks[0].textContent).toBe('um dois tres');
+  });
+
+  it('abre o gate com keydown de navegação, mas não com tecla comum', () => {
+    const dom = mountDom(['alpha beta', 'gamma delta']);
+    renderFade(dom);
+
+    act(() => observer().emit(dom.sheet, true));
+    flushFrames();
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    });
+    flushFrames();
+    expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('');
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    });
+    flushFrames();
+    expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('1.000');
   });
 
   it('cancela o dwell quando o bloco volta para baixo da linha', () => {
@@ -244,6 +291,14 @@ describe('useFadeOnScroll', () => {
     act(() => observer().emit(dom.sheet, true));
     flushFrames();
 
+    expect(onProgress).toHaveBeenCalledWith(0.5);
+    expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('');
+
+    act(() => {
+      dom.scroller.dispatchEvent(new Event('wheel'));
+    });
+    flushFrames();
+
     expect(dom.blocks[0].style.getPropertyValue('--read-progress')).toBe('1.000');
 
     act(() => {
@@ -264,14 +319,19 @@ describe('useFadeOnScroll', () => {
     expect(values).toEqual([0.5]);
   });
 
-  it('conclui uma única vez após a permanência contínua da sentinela', () => {
+  it('conclui uma única vez e apaga todos os blocos ao aceitar a conclusão', () => {
     const dom = mountDom(['um dois tres']);
     const { onComplete } = renderFade(dom);
 
+    dom.setScrollTop(200);
     act(() => {
-      dom.setScrollTop(200);
       observer().emit(dom.sheet, true);
       observer().emit(dom.sentinel, true);
+    });
+    flushFrames();
+
+    act(() => {
+      dom.scroller.dispatchEvent(new Event('scroll'));
     });
     flushFrames();
 
@@ -281,6 +341,8 @@ describe('useFadeOnScroll', () => {
     flushFrames();
 
     expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(dom.blocks[0].textContent).toBe('');
+    expect(dom.blocks[0].dataset.faded).toBe('true');
 
     act(() => {
       vi.advanceTimersByTime(5000);
@@ -291,7 +353,7 @@ describe('useFadeOnScroll', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('já apaga os blocos lidos quando há progresso salvo', () => {
+  it('já apaga os blocos lidos quando há progresso salvo e o apagamento está ligado', () => {
     const dom = mountDom(['aaa bbb', 'ccc ddd', 'eee fff']);
     renderFade(dom, { savedProgress: 0.8 });
 
@@ -301,5 +363,73 @@ describe('useFadeOnScroll', () => {
     expect(dom.blocks[1].textContent).toBe('');
     expect(dom.blocks[2].textContent).toBe('eee fff');
     expect(dom.blocks[2].style.getPropertyValue('--read-progress')).toBe('0.400');
+  });
+
+  it('não apaga a restauração quando fadeEnabled é false', () => {
+    const dom = mountDom(['aaa bbb', 'ccc ddd', 'eee fff']);
+    renderFade(dom, { fadeEnabled: false, savedProgress: 0.8 });
+
+    expect(dom.blocks.map((block) => block.textContent)).toEqual([
+      'aaa bbb',
+      'ccc ddd',
+      'eee fff',
+    ]);
+    for (const block of dom.blocks) {
+      expect(block.style.getPropertyValue('--read-progress')).toBe('');
+      expect(block.dataset.faded).toBeUndefined();
+    }
+  });
+
+  it('mantém a contabilidade de progresso sem escrever variável visual com fadeEnabled false', () => {
+    const dom = mountDom(['aaa bbb', 'ccc ddd', 'eee fff']);
+    const { onProgress } = renderFade(dom, { fadeEnabled: false });
+
+    dom.setScrollTop(200);
+    act(() => observer().emit(dom.sheet, true));
+    flushFrames();
+
+    expect(onProgress).toHaveBeenCalled();
+    expect(onProgress.mock.calls[0][0]).toBeGreaterThan(0);
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    flushFrames();
+
+    expect(dom.blocks.map((block) => block.textContent)).toEqual([
+      'aaa bbb',
+      'ccc ddd',
+      'eee fff',
+    ]);
+    for (const block of dom.blocks) {
+      expect(block.style.getPropertyValue('--read-progress')).toBe('');
+    }
+  });
+
+  it('apaga todos os blocos ao concluir mesmo com fadeEnabled false', () => {
+    const dom = mountDom(['um dois tres']);
+    const { onComplete } = renderFade(dom, { fadeEnabled: false });
+
+    dom.setScrollTop(200);
+    act(() => {
+      observer().emit(dom.sheet, true);
+      observer().emit(dom.sentinel, true);
+    });
+    flushFrames();
+
+    expect(dom.blocks[0].textContent).toBe('um dois tres');
+
+    act(() => {
+      dom.scroller.dispatchEvent(new Event('wheel'));
+    });
+    flushFrames();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(dom.blocks[0].textContent).toBe('');
+    expect(dom.blocks[0].dataset.faded).toBe('true');
   });
 });

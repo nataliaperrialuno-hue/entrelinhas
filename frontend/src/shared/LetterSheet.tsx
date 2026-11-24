@@ -1,14 +1,16 @@
 import type { CSSProperties } from 'react';
 import { renderRichText } from './richText';
+import type { RichTextRenderOptions } from './richText';
 import { themeClassNames } from './themes';
 import type { LetterView } from './types';
 
 interface LetterSheetProps {
   letter: LetterView;
   className?: string;
+  resolveAsset?: RichTextRenderOptions['resolveAsset'];
 }
 
-export function LetterSheet({ letter, className }: LetterSheetProps) {
+export function LetterSheet({ letter, className, resolveAsset }: LetterSheetProps) {
   // A cor opcional tem precedência sobre a tinta da paleta; cartas antigas
   // continuam usando apenas as classes de tema.
   const inkStyle =
@@ -37,7 +39,7 @@ export function LetterSheet({ letter, className }: LetterSheetProps) {
             data-letter-block="true"
             data-block-index={index}
           >
-            {renderRichText(paragraph)}
+            {renderRichText(paragraph, { resolveAsset })}
           </p>
         ))}
       </div>

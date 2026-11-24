@@ -3,6 +3,9 @@
  * ReactNode. Nenhum HTML é produzido: apenas strings e elementos React, para
  * que o React continue escapando `<`/`>` e o hook de fade possa ler e limpar
  * `element.textContent` normalmente.
+ *
+ * O marcador de foto é VOID: `[[foto:<uuid-v4>]]`. Ele nunca carrega uma URL —
+ * a URL vem exclusivamente de `resolveAsset`, fornecido pelo chamador.
  */
 
 import { createElement } from 'react';
@@ -13,6 +16,13 @@ type MarkerType = 'strong' | 'em' | 'u' | 'mark' | 'cor' | 'fonte' | 'tamanho';
 interface TextNode {
   kind: 'text';
   text: string;
+}
+
+interface ImageNode {
+  kind: 'image';
+  type: 'foto';
+  id: string;
+  token: string;
 }
 
 interface ElementNode {
@@ -30,11 +40,16 @@ interface RootNode {
   children: ParsedNode[];
 }
 
-type ParsedNode = TextNode | ElementNode;
+type ParsedNode = TextNode | ImageNode | ElementNode;
 type ContainerNode = RootNode | ElementNode;
 
+export interface RichTextRenderOptions {
+  /** Resolve o id do marcador para uma URL segura; `null` literaliza o marcador. */
+  resolveAsset?: (id: string) => string | null;
+}
+
 interface TokenMatch {
-  type: MarkerType;
+  type: MarkerType | 'foto';
   token: string;
   closeToken: string;
   value?: string;
@@ -42,6 +57,8 @@ interface TokenMatch {
   ambiguous: boolean;
   /** Token que apenas fecha, como `[[/cor]]`. */
   closeOnly: boolean;
+  /** Marcador void não entra na pilha de aninhamento. */
+  void?: boolean;
 }
 
 interface ParameterMarker {
@@ -55,6 +72,29 @@ interface ParameterMarker {
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const FONT_ID = /^(serif|hand|mono)$/;
 const SIZE_ID = /^(sm|md|lg)$/;
+/** UUID v4 canônico: versão 4 no terceiro grupo e variant 8/9/a/b no quarto. */
+const PHOTO_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PHOTO_PREFIX = '[[foto:';
+
+/**
+ * Defesa em profundidade: mesmo que um `resolveAsset` mal implementado devolva
+ * algo perigoso, apenas caminhos internos de asset e object URLs são aceitos.
+ * Nunca há URL no texto do usuário.
+ */
+function isSafeAssetUrl(url: string | null | undefined): url is string {
+  if (typeof url !== 'string' || url.length === 0 || url.length > 2048) return false;
+  if (/\s/.test(url) || url.includes('\\')) return false;
+  for (let index = 0; index < url.length; index += 1) {
+    const code = url.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  if (url.startsWith('//')) return false;
+  if (url.startsWith('/api/assets/')) {
+    const rest = url.slice('/api/assets/'.length);
+    return rest.length > 0 && !rest.includes('/') && !rest.includes('?') && !rest.includes('#');
+  }
+  return url.startsWith('blob:') && url.length > 'blob:'.length;
+}
 
 const PARAMETER_MARKERS: readonly ParameterMarker[] = [
   { prefix: '[[cor:', type: 'cor', close: '[[/cor]]', valid: HEX_COLOR, lowercase: true },
@@ -72,14 +112,33 @@ function simpleMarker(type: MarkerType, token: string): TokenMatch {
  */
 function toLiteral(node: ParsedNode): string {
   if (node.kind === 'text') return node.text;
+  if (node.kind === 'image') return node.token;
   const inner = node.children.map(toLiteral).join('');
   return node.openToken + inner + (node.closed ? node.closeToken : '');
 }
 
-function toReact(node: ParsedNode, key: string): ReactNode {
+function toReact(
+  node: ParsedNode,
+  key: string,
+  resolveAsset: RichTextRenderOptions['resolveAsset'],
+): ReactNode {
   if (node.kind === 'text') return node.text;
 
-  const children = node.children.map((child, index) => toReact(child, `${key}.${index}`));
+  if (node.kind === 'image') {
+    const src = resolveAsset?.(node.id);
+    if (!isSafeAssetUrl(src)) return node.token;
+    return createElement('img', {
+      key,
+      src,
+      alt: 'Foto da carta',
+      className: 'letter-photo',
+      loading: 'lazy',
+      decoding: 'async',
+      draggable: false,
+    });
+  }
+
+  const children = node.children.map((child, index) => toReact(child, `${key}.${index}`, resolveAsset));
 
   switch (node.type) {
     case 'strong':
@@ -101,13 +160,14 @@ function toReact(node: ParsedNode, key: string): ReactNode {
 
 /**
  * Renderiza `**negrito**`, `*itálico*`, `__sublinhado__`, `==destaque==`,
- * `[[cor:#RRGGBB]]`, `[[fonte:id]]` e `[[tamanho:id]]` como elementos React.
+ * `[[cor:#RRGGBB]]`, `[[fonte:id]]`, `[[tamanho:id]]` e `[[foto:<uuid>]]`
+ * como elementos React.
  *
- * Valores fora da whitelist e marcadores sem fechamento ou com aninhamento
- * cruzado permanecem como texto literal, sem lançar e sem perder caracteres.
- * Quebras de linha são preservadas como texto.
+ * Valores fora da whitelist, marcadores sem fechamento, aninhamento cruzado e
+ * fotos cujo id não pode ser resolvido permanecem como texto literal, sem
+ * lançar e sem perder caracteres. Quebras de linha são preservadas como texto.
  */
-export function renderRichText(text: string): ReactNode {
+export function renderRichText(text: string, options: RichTextRenderOptions = {}): ReactNode {
   // Se `]]` não existe a partir de uma posição, não existe depois dela. Esse
   // cursor impede varreduras repetidas e mantém o parser próximo de O(n).
   let noBracketCloseFrom = text.length;
@@ -146,6 +206,22 @@ export function renderRichText(text: string): ReactNode {
           closeToken: '[[/tamanho]]',
           ambiguous: false,
           closeOnly: true,
+        };
+      }
+
+      if (text.startsWith(PHOTO_PREFIX, index)) {
+        const end = findBracketEnd(index + PHOTO_PREFIX.length);
+        if (end === -1) return null;
+        const id = text.slice(index + PHOTO_PREFIX.length, end);
+        if (!PHOTO_ID.test(id)) return null;
+        return {
+          type: 'foto',
+          token: text.slice(index, end + 2),
+          closeToken: '',
+          value: id,
+          ambiguous: false,
+          closeOnly: false,
+          void: true,
         };
       }
 
@@ -194,6 +270,18 @@ export function renderRichText(text: string): ReactNode {
       continue;
     }
 
+    if (match.void) {
+      flush();
+      stack[stack.length - 1].children.push({
+        kind: 'image',
+        type: 'foto',
+        id: match.value as string,
+        token: match.token,
+      });
+      index += match.token.length;
+      continue;
+    }
+
     const top = stack[stack.length - 1];
     const closesTop =
       top.kind === 'element' && top.type === match.type && (match.ambiguous || match.closeOnly);
@@ -217,7 +305,7 @@ export function renderRichText(text: string): ReactNode {
     flush();
     stack.push({
       kind: 'element',
-      type: match.type,
+      type: match.type as MarkerType,
       openToken: match.token,
       closeToken: match.closeToken,
       value: match.value,
@@ -237,6 +325,8 @@ export function renderRichText(text: string): ReactNode {
     stack[stack.length - 1].children.push({ kind: 'text', text: toLiteral(frame) });
   }
 
-  const nodes = root.children.map((child, position) => toReact(child, String(position)));
+  const nodes = root.children.map((child, position) =>
+    toReact(child, String(position), options.resolveAsset),
+  );
   return nodes.length === 1 ? nodes[0] : nodes;
 }

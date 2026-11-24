@@ -98,6 +98,36 @@
   }
 }
 
+/*
+ * Fotos são marcadores void resolvidos apenas pelo chamador. O aspect-ratio
+ * reserva a altura antes do download, evitando deslocar a linha de leitura.
+ */
+.letter-photo {
+  display: block;
+  width: min(100%, 28rem);
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  height: auto;
+  margin: 0.85rem 0;
+  border-radius: 10px;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: 0 4px 14px rgba(58, 46, 36, 0.12);
+}
+
+/* Selo em branco: desenho do remetente; o id do asset viaja na carta. */
+.letter-sheet.seal-custom .letter-sheet__title::after {
+  content: '';
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 0.6rem;
+  border: 2px dashed var(--accent);
+  border-radius: 50%;
+  background: #fffdf8;
+  vertical-align: middle;
+}
+
 .letter-scroll {
   height: 100dvh;
   overflow-y: auto;
