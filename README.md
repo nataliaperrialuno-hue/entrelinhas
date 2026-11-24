@@ -16,11 +16,19 @@ O projeto é um monorepo de estudo e demonstração, organizado para evolução 
 - **Opções de leitura no painel:** escolha se as palavras somem gradualmente (`fadeEnabled`) e o prazo da carta (`readTimeLimitSeconds`, 60 s a 60 min).
 - **Prévia em tempo real:** a carta é mostrada como será lida, antes de gerar o link.
 - **Leitura em etapas:** um link de uso único abre a sessão e libera o conteúdo somente após a confirmação no selo.
-- **Apagamento progressivo:** com `fadeEnabled=true`, os blocos perdem nitidez e opacidade à medida que a leitura avança — e só começam a sumir após o leitor interagir (scroll, toque ou tecla). Com `fadeEnabled=false`, o texto permanece visível até a conclusão; o descarte no servidor acontece nos dois modos.
+- **Apagamento progressivo:** com `fadeEnabled=true`, os blocos perdem nitidez e opacidade à medida que a leitura avança — e só começam a sumir após o leitor interagir (scroll, toque ou tecla). A curva atual é moderada: linha de leitura a **82% da viewport**, faixa de transição de **22%**, permanência de **1000 a 6000 ms** (60 ms por palavra) e transição CSS de **500 ms com `ease-out`**. Com `fadeEnabled=false`, o texto permanece visível até a conclusão; o descarte no servidor acontece nos dois modos.
 - **Prazo e inatividade:** o prazo absoluto é contado a partir da criação da sessão; 10 minutos sem atividade também encerram a leitura e apagam texto e fotos. Ao final, a tela oferece o link **Home — escrever outra carta**.
 - **Encerramento automático:** ao fim do conteúdo, a leitura é concluída sem ação extra e o texto em claro é descartado.
 - **Sessões protegidas:** tokens assinados com HMAC, heartbeat, janela de carência e invalidamento da sessão anterior.
 - **Acessibilidade:** suporte a `prefers-reduced-motion`, foco visível e contraste cuidadoso nas paletas.
+
+## Rascunhos e contador locais
+
+O botão **Salvar rascunho** guarda título, mensagem, identificação e opções da carta no próprio navegador. O menu superior oferece **Nova carta** (limpa o formulário) e **Rascunhos** (abre o painel com **Carregar** e **Excluir**). Sem rascunhos salvos, o painel mostra `Nenhum rascunho salvo.` e lembra: `Fotos e selo desenhado não voltam no rascunho; refaça-os se quiser.`
+
+A barra do ShareBox mostra `Você já escreveu N carta(s) neste navegador.`, com pluralização correta. O contador cresce **somente após a criação da carta com sucesso**; uma tentativa inválida não incrementa.
+
+Tudo fica em `localStorage`, por navegador, nas chaves versionadas `entrelinhas:drafts:v1` e `entrelinhas:letters-written:v1`. Não há conta, backend de rascunhos nem sincronização: limpar os dados do site apaga tudo, e outro navegador ou dispositivo não vê os mesmos rascunhos nem o mesmo contador. Fotos e selo desenhado não são persistidos — ao carregar, voltam apenas texto e opções. Se duas abas do mesmo navegador estiverem abertas ao mesmo tempo, **a última escrita vence**: cada aba trabalha com sua própria cópia em memória e pode sobrescrever os rascunhos ou o contador salvos pela outra, sem bloqueio nem mesclagem. Detalhes em [`docs/decisions/0005-caderno-local-de-rascunhos.md`](docs/decisions/0005-caderno-local-de-rascunhos.md).
 
 ## Tecnologias
 
@@ -91,7 +99,7 @@ entrelinhas/
 │   ├── api.md
 │   ├── data-model.md
 │   ├── threat-model.md
-│   └── decisions/                  # ADRs 0001 a 0004
+│   └── decisions/                  # ADRs 0001 a 0005
 ├── frontend/
 │   ├── index.html
 │   └── src/
@@ -106,7 +114,9 @@ entrelinhas/
 │       └── test/setup.ts           # setup do Vitest + Testing Library
 ├── tests/
 │   └── e2e/
-│       └── reading.spec.ts         # cenários Playwright de leitura
+│       ├── reading.spec.ts         # cenários Playwright de leitura
+│       ├── drafts.spec.ts          # rascunhos locais, contador e Nova carta
+│       └── fade-moderado.spec.ts   # gate de interação e curva de apagamento
 ├── .env.example
 ├── .nvmrc
 ├── eslint.config.js
@@ -200,6 +210,9 @@ Ameaças e mitigação detalhadas em [`docs/threat-model.md`](docs/threat-model.
 - **Scroll é um proxy de leitura:** o progresso inferido da rolagem não prova que o texto foi lido. Com `fadeEnabled=false`, as palavras permanecem visíveis até a conclusão por escolha de quem enviou. Não compartilhe links de cartas sensíveis.
 - **Dimensões sem reencode:** imagens são validadas por MIME, *magic bytes*, tamanho e dimensões, mas não são recodificadas; permanece uma superfície residual para arquivos polimórficos.
 - **bfcache:** estados retornados do cache de histórico são mitigados por revalidação da sessão; ainda assim, a disponibilidade depende do navegador.
+- **Caderno local é descartável:** rascunhos e contador vivem no `localStorage` do navegador. Limpar os dados do site apaga tudo, e não há backend, conta ou recuperação pelo servidor.
+- **Rascunho não guarda mídia:** fotos e selo desenhado não voltam ao carregar; refaça-os se quiser.
+- **Sem sincronização entre dispositivos:** outro navegador ou aparelho não vê os mesmos rascunhos nem o mesmo contador de cartas escritas.
 - **SQLite tem um escritor:** o SQLite local é mono-processo; escalar horizontalmente exigirá outro armazenamento ou replicação explícita.
 - **CSP não substitui HTTPS/HSTS:** a Content Security Policy já está ativa no Helmet (`backend/src/middleware/security.ts`), com diretivas restritas a `'self'` (sem `unsafe-eval`; `'unsafe-inline'` apenas em estilos e `data:` em `img-src` para prévia/selo). O `data:` amplia a superfície de imagens em relação a uma CSP estritamente `'self'`; a confidencialidade em trânsito depende de TLS/HSTS na borda.
 - **Playwright exige navegadores instalados** para os testes end-to-end.

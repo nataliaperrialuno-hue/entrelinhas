@@ -56,6 +56,14 @@ Em desenvolvimento, o Vite (`5173`) encaminha `/api`, `/c` e `/leitura` para a A
 - **Dois prazos, uma autoridade.** `readDeadlineAt` é absoluto por carta e não muda com heartbeat; `idleDeadlineAt` deriva de `last_seen_at`. A expiração de qualquer um apaga texto e mídia atomicamente e faz as rotas de leitura responderem `410`.
 - **Apagamento visual é opção do remetente.** `fadeEnabled: false` mantém as palavras visíveis até a conclusão, mas o descarte no servidor permanece obrigatório; com `true`, o efeito espera a primeira interação do leitor.
 
+## Apagamento progressivo moderado
+
+A calibração original da linha (70%) e do dwell (400–4000 ms, 30 ms por palavra) foi revisada por experiência do usuário: uma carta curta podia perder nitidez cedo demais e a leitura parecia apressada. A curva vigente usa a linha em **82% da viewport** (altura do contêiner de rolagem), faixa de transição de **22%** e permanência de **1000 a 6000 ms**, calculada como `min(6000, max(1000, palavras × 60))`. A transição CSS dos blocos é `opacity`/`filter` em **500 ms `ease-out`**. `fadeEnabled`, o prazo por carta e o gate de primeira interação continuam inalterados — nenhuma palavra some antes de scroll, roda, toque ou tecla de navegação. O histórico e a motivação estão em [`decisions/0003-apagamento-progressivo.md`](decisions/0003-apagamento-progressivo.md).
+
+## Caderno local no navegador
+
+Rascunhos e contador de cartas escritas são estado **do navegador**, não do servidor: `entrelinhas:drafts:v1` e `entrelinhas:letters-written:v1` em `localStorage`. O backend continua sendo a única autoridade sobre cartas, sessões e progresso; o caderno local nunca é consultado para liberar leitura. O contador é incrementado apenas depois de `POST /api/letters` bem-sucedido. Fotos e selo desenhado não entram no rascunho — as referências de assets não são reaproveitadas. Não há sincronização entre dispositivos, limpeza automática pelo servidor ou recuperação após limpar dados do site. Ver [`decisions/0005-caderno-local-de-rascunhos.md`](decisions/0005-caderno-local-de-rascunhos.md).
+
 ## Formatação e limites
 
 A mensagem é validada no backend com limite de **4.000 palavras** e teto de segurança de **100.000 caracteres**. O texto rico é armazenado como texto puro com marcadores internos; um parser com whitelist converte apenas os marcadores reconhecidos em elementos React:
@@ -74,8 +82,8 @@ Marcadores inválidos ou malformados são exibidos como texto comum. HTML enviad
 
 - **`requestAnimationFrame` (rAF):** a amostragem de posição de rolagem é feita por frame, evitando cálculos a cada evento de `scroll`.
 - **`IntersectionObserver` como gate:** observa quais blocos estão visíveis para limitar o trabalho de renderização; não é a fonte autoritativa de progresso.
-- **Dwell com teto:** um bloco só é apagado após permanecer na linha de leitura por `min(4000 ms, max(400 ms, palavras × 30 ms))`, evitando que o texto desapareça antes da leitura e que cartas longas travem a conclusão.
-- **Linha de leitura a 70% da viewport:** referência visual estável para considerar um trecho "lido", em vez de usar o topo da tela.
+- **Dwell com teto (curva original, revista adiante):** um bloco só era apagado após permanecer na linha por `min(4000 ms, max(400 ms, palavras × 30 ms))`.
+- **Linha de leitura a 70% da viewport (valor original, revisto adiante):** referência visual estável para considerar um trecho "lido", em vez de usar o topo da tela. A calibração atual está em **82%**, detalhada na seção "Apagamento progressivo moderado".
 - **`100dvh`:** altura dinâmica da viewport em dispositivos móveis, reduzindo saltos causados por barras de navegador.
 - **CSS scroll-driven:** usado apenas para realce visual sob `@supports`, com fallback em JavaScript; animações são desligadas com `prefers-reduced-motion`.
 
@@ -89,3 +97,4 @@ O selo `custom` é desenhado em canvas apenas no painel do autor; o resultado vi
 | [0002 — Sessão interrompida](decisions/0002-sessao-interrompida.md) | Política híbrida de retomada com janela de carência de 10 minutos |
 | [0003 — Apagamento progressivo](decisions/0003-apagamento-progressivo.md) | rAF, linha de leitura, dwell, IntersectionObserver e compatibilidade com iOS Safari |
 | [0004 — Limite e opções de leitura](decisions/0004-limite-e-opcoes-de-leitura.md) | Prazo por carta, apagamento visual opcional, inatividade por `last_seen_at` e assets no SQLite |
+| [0005 — Caderno local de rascunhos](decisions/0005-caderno-local-de-rascunhos.md) | `localStorage` por navegador, contador local e exclusão de fotos/selo do rascunho |
