@@ -13,7 +13,7 @@ O esquema inicial está em `backend/src/db/migrations/001_init.sql` e usa duas t
 | `sender_name` | `TEXT` | anulável | Nome do remetente; `NULL` quando anônimo. |
 | `recipient_name` | `TEXT` | anulável | Nome do destinatário. |
 | `signature` | `TEXT` | anulável | Assinatura opcional. |
-| `theme_json` | `TEXT` | `NOT NULL` | Seleção de tema serializada (envelope, selo, paleta, tipografia, papel). |
+| `theme_json` | `TEXT` | `NOT NULL` | Seleção de tema serializada (envelope, selo, paleta, tipografia, papel e `inkColor` opcional no formato `#RRGGBB`; cartas antigas não possuem esse campo). |
 | `state` | `TEXT` | `NOT NULL DEFAULT 'unopened'`, `CHECK IN ('unopened','opening','reading','completed','expired')` | Ciclo de vida da carta. |
 | `created_at` | `INTEGER` | `NOT NULL` | Criação. |
 | `expires_at` | `INTEGER` | `NOT NULL` | Limite de validade. |

@@ -12,7 +12,7 @@ O apagamento progressivo precisa acompanhar a rolagem com fluidez, sem apagar te
 
 1. **Amostragem com `requestAnimationFrame`:** a posição de rolagem é lida no máximo uma vez por frame, evitando cálculos a cada evento `scroll`.
 2. **Linha de leitura a 70% da viewport:** um trecho passa a ser considerado lido quando cruza essa linha, não quando entra na tela.
-3. **Dwell mínimo:** um bloco só é apagado após permanecer na linha por `max(400 ms, palavras × 30 ms)`. O fator por palavra evita que parágrafos longos desapareçam rápido demais.
+3. **Dwell com teto:** um bloco só é apagado após permanecer na linha por `min(4000 ms, max(400 ms, palavras × 30 ms))`. O fator por palavra evita que parágrafos longos desapareçam rápido demais; o teto de 4.000 ms impede que cartas de até 4.000 palavras exijam dezenas de segundos por bloco e travem a conclusão.
 4. **`IntersectionObserver` como gate:** usado para limitar quais blocos recebem processamento; a fonte autoritativa de progresso continua sendo o cálculo baseado na rolagem, validado no servidor.
 5. **CSS scroll-driven apenas como realce:** animações via `animation-timeline` são aplicadas **somente** sob `@supports`, para destaque visual. O apagamento funcional tem fallback em JavaScript.
 6. **Não usar IntersectionObserver v2 nem canvas:**
@@ -31,7 +31,7 @@ O apagamento progressivo precisa acompanhar a rolagem com fluidez, sem apagar te
 ### Negativas / dívidas
 
 - O progresso por rolagem continua sendo um **proxy** de leitura — não comprova atenção do leitor.
-- A calibração do dwell (400 ms / 30 ms por palavra) é subjetiva e pode precisar de ajuste após testes com usuários.
+- A calibração do dwell (400 ms / 30 ms por palavra, com teto de 4.000 ms) é subjetiva e pode precisar de ajuste após testes com usuários; o teto evita esperas prolongadas por bloco em cartas longas.
 - A coordenação entre rAF, observadores e revalidação da sessão aumenta a complexidade do lado cliente.
 
 ## Alternativas rejeitadas

@@ -4,7 +4,7 @@ Contrato de comportamento da API do Entrelinhas. Em desenvolvimento, todas as ro
 
 ## Convenções
 
-- Corpos de requisição e resposta usam `application/json`; o corpo recebido é limitado a **32 kb**.
+- Corpos de requisição e resposta usam `application/json`; o corpo recebido é limitado a **512 kb**.
 - `sessionId` e `linkToken` devem ser tratados como valores opacos e codificados na URL quando necessário.
 - O cliente envia `credentials: same-origin`; o cookie de sessão é definido pelo servidor.
 - Erros de validação retornam `400`, corpo excessivo `413`, abuso `429` e falha interna `500` (sem detalhes do erro).
@@ -42,10 +42,15 @@ Cria uma carta e devolve o link de leitura.
     "seal": "wine",
     "palette": "sepia",
     "typography": "serif",
-    "paper": "linen"
+    "paper": "linen",
+    "inkColor": "#3a2e24"
   }
 }
 ```
+
+`inkColor` é opcional, no formato `#RRGGBB` (cartas antigas não possuem o campo).
+
+Exemplo curto de mensagem com formatação: `"Um texto com **ênfase** e [[cor:#7c2d38]]trecho em cor[[/cor]]."`. Os marcadores são texto puro; um parser com whitelist os converte em elementos React e marcadores inválidos ou malformados permanecem como texto comum.
 
 Os identificadores de tema seguem `frontend/src/shared/types.ts`: `envelope` (`classic`, `floral`, `minimal`), `seal` (`wine`, `gold`, `ink`), `palette` (`sepia`, `rose`, `night`, `sage`), `typography` (`serif`, `hand`, `mono`) e `paper` (`linen`, `plain`, `aged`).
 
@@ -55,7 +60,7 @@ Os identificadores de tema seguem `frontend/src/shared/types.ts`: `envelope` (`c
 { "url": "/c/<LINK_TOKEN>" }
 ```
 
-**Falhas:** `400` (dados inválidos), `413` (corpo maior que 32 kb), `429` (limite de taxa), `500`.
+**Falhas:** `400` (dados inválidos, inclusive mensagem acima de 4.000 palavras ou 100.000 caracteres), `413` (corpo maior que 512 kb), `429` (limite de taxa), `500`.
 
 ```bash
 curl -i -X POST http://localhost:5173/api/letters \

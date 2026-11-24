@@ -8,7 +8,7 @@ Este documento descreve a estrutura em camadas do Entrelinhas, o fluxo de uma re
 | --- | --- | --- |
 | Apresentação | Formulário de criação, prévia e experiência de leitura; roteamento por `pathname` | `frontend/src/features`, `frontend/src/App.tsx` |
 | Cliente HTTP | Chamadas tipadas a `/api/*`, com `credentials: same-origin` e tratamento de `ApiError` | `frontend/src/lib/api.ts` |
-| Borda HTTP | Express 5, Helmet, JSON limitado a 32 kb, limitação de taxa e redirecionamento do link curto | `backend/src/app.ts` |
+| Borda HTTP | Express 5, Helmet, JSON limitado a 512 kb, limitação de taxa e redirecionamento do link curto | `backend/src/app.ts` |
 | Domínio | Regras de criação, emissão de tokens, claim de sessão, progresso e conclusão | `backend/src/modules` (em implementação) |
 | Persistência | SQLite via `node:sqlite`, migrações e transações atômicas | `backend/src/db` |
 
@@ -46,13 +46,27 @@ Em desenvolvimento, o Vite (`5173`) encaminha `/api`, `/c` e `/leitura` para a A
 - **Sessão ativa por `epoch`.** Uma nova sessão incrementa o `epoch` e invalida a anterior; apenas a sessão ativa tem permissão para enviar progresso e conclusão.
 - **Heartbeat e carência.** `HEARTBEAT_TTL_SECONDS` define a validade da presença da sessão; `SESSION_GRACE_MINUTES` limita a retomada única após interrupção. Depois da janela, a sessão expira. Ver [`decisions/0002-sessao-interrompida.md`](decisions/0002-sessao-interrompida.md).
 - **Conclusão idempotente.** `POST /complete` aceita `Idempotency-Key`; repetições não produzem efeitos adicionais.
-- **Conteúdo confiável, mas não confiável como HTML.** A mensagem da carta é texto: deve ser renderizada como texto, nunca injetada como markup.
+- **Conteúdo confiável, mas não confiável como HTML.** A mensagem da carta é texto puro: deve ser renderizada como texto, nunca injetada como markup. A formatação usa marcadores internos com whitelist, convertidos em elementos React; marcadores inválidos ou malformados permanecem como texto comum.
+
+## Formatação e limites
+
+A mensagem é validada no backend com limite de **4.000 palavras** e teto de segurança de **100.000 caracteres**. O texto rico é armazenado como texto puro com marcadores internos; um parser com whitelist converte apenas os marcadores reconhecidos em elementos React:
+
+- `**negrito**` — negrito;
+- `*itálico*` — itálico;
+- `__sublinhado__` — sublinhado;
+- `==destaque==` — destaque;
+- `[[cor:#RRGGBB]]...[[/cor]]` — cor do trecho;
+- `[[fonte:serif|hand|mono]]...[[/fonte]]` — fonte do trecho;
+- `[[tamanho:sm|md|lg]]...[[/tamanho]]` — tamanho do trecho.
+
+Marcadores inválidos ou malformados são exibidos como texto comum. HTML enviado pelo usuário não é interpretado e não há uso de `dangerouslySetInnerHTML`.
 
 ## Decisões de performance
 
 - **`requestAnimationFrame` (rAF):** a amostragem de posição de rolagem é feita por frame, evitando cálculos a cada evento de `scroll`.
 - **`IntersectionObserver` como gate:** observa quais blocos estão visíveis para limitar o trabalho de renderização; não é a fonte autoritativa de progresso.
-- **Dwell mínimo:** um bloco só é apagado após permanecer na linha de leitura por `max(400 ms, palavras × 30 ms)`, evitando que o texto desapareça antes da leitura.
+- **Dwell com teto:** um bloco só é apagado após permanecer na linha de leitura por `min(4000 ms, max(400 ms, palavras × 30 ms))`, evitando que o texto desapareça antes da leitura e que cartas longas travem a conclusão.
 - **Linha de leitura a 70% da viewport:** referência visual estável para considerar um trecho "lido", em vez de usar o topo da tela.
 - **`100dvh`:** altura dinâmica da viewport em dispositivos móveis, reduzindo saltos causados por barras de navegador.
 - **CSS scroll-driven:** usado apenas para realce visual sob `@supports`, com fallback em JavaScript; animações são desligadas com `prefers-reduced-motion`.
