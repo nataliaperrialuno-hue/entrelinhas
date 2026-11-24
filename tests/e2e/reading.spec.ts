@@ -134,4 +134,36 @@ test.describe('Fluxo de leitura única', () => {
     await expect.poll(async () => (await readState(page.request, sessionId)).state).toBe('completed');
     await expect(page.getByText(/cumpriu seu propósito|palavras precisam apenas ser sentidas/i)).toBeVisible();
   });
+
+  test('formatação e cor da letra chegam intactas ao leitor', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Não informar destinatário').uncheck();
+    await page.getByLabel('Para:').fill('Destinatário');
+    await page.getByLabel('Título da carta').fill('Carta formatada');
+
+    const message = page.getByLabel('Mensagem');
+    await message.fill('Texto importante');
+    await message.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(0, 5));
+    await page.getByRole('button', { name: 'Negrito (Ctrl+B)' }).click();
+    await expect(page.locator('.preview-sheet strong')).toHaveText('Texto');
+
+    await page.getByRole('button', { name: 'Cor da letra Vinho' }).click();
+    await expect(page.locator('.preview-sheet')).toHaveAttribute(
+      'style',
+      /--letter-ink:\s*#7c2d38/,
+    );
+
+    await page.getByRole('button', { name: /Guardar carta/i }).click();
+    const url = await page.locator('#share-url').inputValue();
+
+    await page.goto(url);
+    await page.getByRole('button', { name: /Continuar/i }).click();
+    await page.getByRole('button', { name: /abrir|selo|revelar/i }).first().click();
+
+    await expect(page.locator('.letter-sheet strong')).toHaveText('Texto');
+    await expect(page.locator('.letter-sheet')).toHaveAttribute(
+      'style',
+      /--letter-ink:\s*#7c2d38/,
+    );
+  });
 });
