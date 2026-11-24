@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS letters (
   sender_name TEXT,
   recipient_name TEXT,
   signature TEXT,
+  sender_anonymous INTEGER NOT NULL DEFAULT 0,
   theme_json TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'unopened' CHECK (state IN ('unopened','opening','reading','completed','expired')),
   created_at INTEGER NOT NULL,
